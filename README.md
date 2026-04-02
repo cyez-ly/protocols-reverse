@@ -154,51 +154,7 @@ python app/main.py \
   --print-json
 ```
 
-也支持通过环境变量为不同工具设置解释器（优先级低于 CLI 参数）：
-
-```bash
-export NETZOB_PYTHON_BIN=/root/venv/bin/python
-export NEMESYS_PYTHON_BIN=/root/venv_nemesys/bin/python
-export NETPLIER_PYTHON_BIN=/root/venv_netplier/bin/python
-export BINARYINFERNO_PYTHON_BIN=/root/venv_binaryinferno/bin/python
-```
-
-官方工具入口也可以通过环境变量指定：
-
-```bash
-export NETZOB_MODE=auto
-export NETZOB_IMPORT_LAYER=5
-export NETZOB_IMPORT_LAYER_CANDIDATES=5,4,3,2,1
-export NETZOB_NORMALIZE_CAPTURE=true
-export NEMESYS_HOME=/root/tools/nemesys
-export NEMESYS_MODE=auto
-export NEMESYS_SIGMA=0.6
-export NEMESYS_LAYER=2
-export NEMESYS_LAYER_CANDIDATES=2,3,4
-export NEMESYS_RELATIVE_TO_IP=true
-export NEMESYS_RELATIVE_TO_IP_MODE=auto
-export NEMESYS_DISABLE_REFINEMENT=false
-export NEMESYS_CONSENSUS_MIN_SUPPORT=0.60
-export NEMESYS_CONSENSUS_MAX_FIELDS=64
-export NEMESYS_DISABLE_CONSENSUS=false
-export NEMESYS_NORMALIZE_CAPTURE=true
-export NETPLIER_MAIN_PATH=/root/NetPlier/NetPlier/netplier/main.py
-export NETPLIER_MAFFT_MODE=einsi
-export NETPLIER_MULTITHREAD=true
-export NETPLIER_LAYER_CANDIDATES=5,4,3,2,1
-export NETPLIER_TIMEOUT_SEC=180
-export NETPLIER_MAX_PACKETS=40
-export NETPLIER_NORMALIZE_CAPTURE=true
-export OFFICIAL_CAPTURE_NORMALIZE=true
-export BINARYINFERNO_MAIN_PATH=/root/BinaryInferno/binaryinferno/binaryinferno/blackboard.py
-export BINARYINFERNO_DETECTORS=boundBE
-export BINARYINFERNO_MAX_MESSAGES=40
-export BINARYINFERNO_TIMEOUT_SEC=90
-export BINARYINFERNO_MAX_ATTEMPTS=3
-export BINARYINFERNO_ACCEPT_LOW_SIGNAL=true
-```
-
-如果不想每次 `export`，可以直接写进项目根目录 `.env`，程序启动时会自动加载：
+env文件：
 
 ```env
 NETZOB_PYTHON_BIN=/root/venv/bin/python
@@ -299,49 +255,12 @@ outputs/run_x/
 └── run.log
 ```
 
-## 8. 样本覆盖建议（已升级为中大样本）
 
-当前数据脚本已从“极小测试包”升级为“中大包量”样本，覆盖常见和不常见协议，并保留文本/二进制分类。
 说明：项目预处理优先按文件魔数识别 `pcap/pcapng`，后缀与魔数不一致也可处理并提示。
 
-### 8.1 一键下载并整理到 datasets
 
-项目内置数据整理脚本：`scripts/prepare_datasets.py`，自动下载并分类：
 
-- 常见 + 文本：HTTP/TLS 混合流、SIP+RTP、gRPC-Web
-- 常见 + 二进制：DNS+mDNS、QUIC、HTTP/2、TLS1.2
-- 不常见 + 文本：NetPerfMeter、gRPC stream reassembly
-- 不常见 + 二进制：OPC UA(signed/encrypted-chunking)、logistics multicast
-
-执行命令：
-
-```bash
-# 推荐：清理旧的小样本并重建
-python scripts/prepare_datasets.py --root datasets --clean-old --force
-```
-
-生成目录：
-
-```text
-datasets/
-├── common/text
-├── common/binary
-├── uncommon/text
-├── uncommon/binary
-└── manifests/
-    ├── dataset_index.json
-    └── dataset_index.csv
-```
-
-其中 `dataset_index.json/csv` 会记录每个样本的来源链接、协议类型、分类、文件大小、`packet_count` 和 SHA256。
-
-## 9. 测试
-
-```bash
-python -m unittest discover -s tests -v
-```
-
-## 10. 版本核对建议（按 AGENTS.md）
+## 8. 版本核对建议（按 AGENTS.md）
 
 ```bash
 # 1) 已安装版本
@@ -360,9 +279,51 @@ PY
 uv sync --upgrade-package crewai
 ```
 
-## 11. 后续扩展建议
 
-1. 优化官方 NetPlier 运行性能（大样本时 MAFFT 耗时较高，可增加采样/分片策略）。
-2. 增加协议模板导出（如 Kaitai Struct 或自定义 DSL）。
-3. 增加 Web UI（FastAPI + 前端）并复用当前 JSON 中间结果。
-4. 加入更多统计特征和聚类算法（时序、方向、状态机推断）。
+## 9. 复现指南
+本章节是复现教程
+### 9.1 复现步骤
+
+适用于需要复现“官方工具调用链”。
+
+1. 需准备四套工具环境（路径以自己环境为准）：
+   - `NETZOB_PYTHON_BIN`
+   - `NEMESYS_PYTHON_BIN`
+   - `NETPLIER_PYTHON_BIN`
+   - `BINARYINFERNO_PYTHON_BIN`
+
+2. 复现步骤
+
+```bash
+git clone https://github.com/cyez-ly/protocols-reverse.git
+cd protocols-reverse
+git checkout main
+# 配置环境
+uv sync
+# 配置.env
+cp .env.example .env
+```
+
+.env文件修改为自己的路径：
+
+```txt
+# API key
+OPENROUTER_API_KEY=YOUR_KEY_HERE
+# 使用的模型
+MODEL=openrouter/deepseek/deepseek-r1
+# deepseek/deepseek-r1
+
+# 工具各自的 Python 解释器（推荐写到 bin/python，最直观）
+# 举例/root/venv_binaryinferno/bin/python
+NETZOB_PYTHON_BIN=你的netzob路径
+NEMESYS_PYTHON_BIN=你的nemesys路径
+NETPLIER_PYTHON_BIN=你的netplier路径
+BINARYINFERNO_PYTHON_BIN=你的binaryinferno路径
+```
+
+
+3. 运行
+```bash
+python app/main.py --pcap <数据文件> --output outputs/run_01 --use-llm --print-json
+```
+
