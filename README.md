@@ -319,6 +319,10 @@ NETZOB_PYTHON_BIN=你的netzob路径
 NEMESYS_PYTHON_BIN=你的nemesys路径
 NETPLIER_PYTHON_BIN=你的netplier路径
 BINARYINFERNO_PYTHON_BIN=你的binaryinferno路径
+
+
+# NEMESYS 官方仓库根目录（应包含 src/nemere）
+NEMESYS_HOME=你的nemesys官方仓库路径
 ```
 
 
