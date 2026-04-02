@@ -1,0 +1,46 @@
+preprocess_task:
+  description: >
+    Read unknown traffic capture {pcap_path}, extract deterministic traffic features,
+    and produce a normalized traffic profile JSON.
+  expected_output: >
+    A JSON-compatible traffic profile with sessions, packet statistics, entropy,
+    printable ratio, and protocol style classification.
+  agent: preprocess_agent
+
+tool_selection_task:
+  description: >
+    Select protocol reverse tools and execution mode based on the traffic profile,
+    with explicit reason and fallback plan.
+  expected_output: >
+    A tool execution plan containing selected tools, mode, confidence, and rationale.
+  agent: tool_selector_agent
+
+segmentation_task:
+  description: >
+    Generate field boundary candidates from sampled messages and clusters.
+  expected_output: >
+    Candidate field ranges with confidence, source tool, and explainable reasons.
+  agent: segmentation_agent
+
+semantic_inference_task:
+  description: >
+    Infer likely semantics for candidate fields and provide confidence scores.
+  expected_output: >
+    Semantic candidates for type, length, timestamp, id, payload, and checksum.
+  agent: semantic_inference_agent
+
+fusion_task:
+  description: >
+    Fuse segmentation and semantic evidence into a final protocol schema.
+  expected_output: >
+    A conflict-resolved schema with message clusters, field definitions, and
+    global confidence.
+  agent: fusion_agent
+
+report_task:
+  description: >
+    Summarize the whole reverse process and create a markdown report.
+  expected_output: >
+    A markdown report including overview, tool rationale, candidates, fusion result,
+    conflict handling, and limitations.
+  agent: report_agent

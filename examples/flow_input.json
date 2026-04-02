@@ -1,0 +1,10 @@
+{
+  "pcap": "examples/demo.pcap",
+  "output": "outputs/run_from_trigger",
+  "python_bin": "python3",
+  "netzob_python_bin": "/root/venv",
+  "netplier_python_bin": "/root/venv_netplier",
+  "binaryinferno_python_bin": "/root/venv_binaryinferno",
+  "timeout": 90,
+  "use_llm": false
+}
