@@ -319,6 +319,17 @@ NETZOB_PYTHON_BIN=你的netzob路径
 NEMESYS_PYTHON_BIN=你的nemesys路径
 NETPLIER_PYTHON_BIN=你的netplier路径
 BINARYINFERNO_PYTHON_BIN=你的binaryinferno路径
+
+
+# NEMESYS 官方仓库根目录（应包含 src/nemere）
+NEMESYS_HOME=/root/tools/nemesys
+
+# NetPlier 官方入口（仓库里的 main.py）
+NETPLIER_MAIN_PATH=/root/NetPlier/NetPlier/netplier/main.py
+
+# BinaryInferno 官方入口（blackboard.py）
+BINARYINFERNO_MAIN_PATH=/root/BinaryInferno/binaryinferno/binaryinferno/blackboard.py
+
 ```
 
 
