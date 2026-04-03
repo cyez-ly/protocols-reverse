@@ -135,10 +135,13 @@ DEEPSEEK_MODEL=deepseek/deepseek-chat
 ## 6. 运行方式
 
 ```bash
-python app/main.py --pcap examples/demo.pcap --output outputs/run_01
+python app/main.py --pcap examples/demo.pcap --output outputs/run_01 --print-json --use-llm
 ```
 
-可选参数：
+> 打印json，使用指定大模型参与决策
+
+
+**可选参数**：
 
 ```bash
 python app/main.py \
@@ -154,7 +157,45 @@ python app/main.py \
   --print-json
 ```
 
-env文件：
+**这些可选参数含义如下：**
+
+* `--pcap`
+输入抓包文件路径（建议 .pcap/.pcapng）。
+
+* `--output`
+本次运行输出目录，会生成 traffic_profile.json、execution_plan.json、final_schema.json、report.md 等。
+
+* `--python-bin`
+全局 Python 解释器，给各子进程工具适配器用。
+如果某个工具没单独指定解释器，就用它。
+
+* `--netzob-python-bin`
+仅 Netzob 适配器使用的 Python（通常是装了 Netzob 的虚拟环境 bin/python）。
+
+* `--nemesys-python-bin`
+仅 NEMESYS 适配器使用的 Python。
+
+* `--netplier-python-bin`
+仅 NetPlier 适配器使用的 Python。
+
+* `--binaryinferno-python-bin`
+仅 BinaryInferno 适配器使用的 Python。
+
+* `--timeout`
+工具子进程超时时间（秒）。超时会走降级/回退逻辑，而不是整条流程崩溃。
+
+* `--use-llm`
+开启大模型参与：
+预处理阶段、工具选择阶段、融合阶段，以及各阶段注释。
+需要环境里指定可用 API Key 以及 model类型。
+
+* `--print-json`
+终端打印最终 JSON 摘要（含产物路径、警告和错误信息、大模型输出的阶段注释），便于查看。
+
+
+
+
+**env文件**：
 
 ```env
 NETZOB_PYTHON_BIN=/root/venv/bin/python

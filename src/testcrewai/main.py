@@ -115,7 +115,7 @@ def run(argv: list[str] | None = None) -> Dict[str, Any]:
         for key, value in result.get("artifacts", {}).items():
             print(f"- {key}: {value}")
         if result.get("warnings"):
-            print(f"告警数: {len(result['warnings'])}")
+            print(f"警告数: {len(result['warnings'])}")
         if result.get("errors"):
             print(f"错误数: {len(result['errors'])}")
 

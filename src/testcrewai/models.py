@@ -164,6 +164,7 @@ class RunArtifacts(BaseModel):
     semantic_candidates_path: Optional[Path] = None
     final_schema_path: Optional[Path] = None
     report_path: Optional[Path] = None
+    llm_policy_path: Optional[Path] = None
 
 
 class ProtocolReverseState(BaseModel):
@@ -186,6 +187,7 @@ class ProtocolReverseState(BaseModel):
     final_schema: Optional[ProtocolSchema] = None
     report: Optional[AnalysisReport] = None
     llm_notes: Dict[str, str] = Field(default_factory=dict)
+    llm_policy: Dict[str, Any] = Field(default_factory=dict)
 
     warnings: List[str] = Field(default_factory=list)
     errors: List[str] = Field(default_factory=list)
