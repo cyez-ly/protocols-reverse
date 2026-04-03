@@ -10,7 +10,7 @@ from testcrewai.models import ShellCommandResult
 
 
 class ShellRunner:
-    """Unified subprocess runner with timeout and structured output."""
+    """统一的子进程执行器，支持超时与结构化输出。"""
 
     def run(
         self,
@@ -60,7 +60,7 @@ class ShellRunner:
                 command=cmd_list,
                 return_code=1,
                 stdout="",
-                stderr=f"Shell execution failed: {exc}",
+                stderr=f"Shell 执行失败: {exc}",
                 timed_out=False,
                 duration_sec=round(duration, 4),
             )

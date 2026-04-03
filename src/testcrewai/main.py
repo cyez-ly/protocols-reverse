@@ -39,45 +39,45 @@ _load_project_env()
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="testcrewai",
-        description="Unknown protocol structure reverse prototype based on CrewAI Flow + Agents + Tools.",
+        description="基于 CrewAI Flow + Agents + Tools 的未知协议结构逆向原型系统。",
     )
-    parser.add_argument("--pcap", required=True, help="Input capture file path (.pcap/.pcapng preferred)")
-    parser.add_argument("--output", required=True, help="Output directory path")
+    parser.add_argument("--pcap", required=True, help="输入抓包文件路径（优先 .pcap/.pcapng）")
+    parser.add_argument("--output", required=True, help="输出目录路径")
     parser.add_argument(
         "--python-bin",
         default=os.getenv("PYTHON_BIN", sys.executable),
-        help="Global fallback Python interpreter path for subprocess adapters",
+        help="子进程适配器的全局兜底 Python 解释器路径",
     )
     parser.add_argument(
         "--netzob-python-bin",
         default=os.getenv("NETZOB_PYTHON_BIN"),
-        help="Python interpreter for Netzob adapter only",
+        help="仅用于 Netzob 适配器的 Python 解释器",
     )
     parser.add_argument(
         "--nemesys-python-bin",
         default=os.getenv("NEMESYS_PYTHON_BIN"),
-        help="Python interpreter for NEMESYS adapter only",
+        help="仅用于 NEMESYS 适配器的 Python 解释器",
     )
     parser.add_argument(
         "--netplier-python-bin",
         default=os.getenv("NETPLIER_PYTHON_BIN"),
-        help="Python interpreter for NetPlier adapter only",
+        help="仅用于 NetPlier 适配器的 Python 解释器",
     )
     parser.add_argument(
         "--binaryinferno-python-bin",
         default=os.getenv("BINARYINFERNO_PYTHON_BIN"),
-        help="Python interpreter for BinaryInferno adapter only",
+        help="仅用于 BinaryInferno 适配器的 Python 解释器",
     )
-    parser.add_argument("--timeout", type=int, default=90, help="Subprocess timeout in seconds")
+    parser.add_argument("--timeout", type=int, default=90, help="子进程超时时间（秒）")
     parser.add_argument(
         "--use-llm",
         action="store_true",
-        help="Enable optional LLM notes for each agent stage (requires API keys)",
+        help="启用各阶段可选 LLM 注释（需要可用 API Key）",
     )
     parser.add_argument(
         "--print-json",
         action="store_true",
-        help="Print final summary in JSON format",
+        help="以 JSON 格式打印最终摘要",
     )
     return parser
 
@@ -110,14 +110,14 @@ def run(argv: list[str] | None = None) -> Dict[str, Any]:
     if args.print_json:
         print(json.dumps(result, ensure_ascii=False, indent=2))
     else:
-        print(f"Run completed. Output directory: {result.get('output_dir', args.output)}")
-        print("Artifacts:")
+        print(f"运行完成。输出目录: {result.get('output_dir', args.output)}")
+        print("产物文件:")
         for key, value in result.get("artifacts", {}).items():
             print(f"- {key}: {value}")
         if result.get("warnings"):
-            print(f"Warnings: {len(result['warnings'])}")
+            print(f"告警数: {len(result['warnings'])}")
         if result.get("errors"):
-            print(f"Errors: {len(result['errors'])}")
+            print(f"错误数: {len(result['errors'])}")
 
     return result
 
@@ -125,13 +125,13 @@ def run(argv: list[str] | None = None) -> Dict[str, Any]:
 def run_with_trigger() -> Dict[str, Any]:
     # 触发器入口：从 argv[1] 读取 JSON 负载。
     if len(sys.argv) < 2:
-        raise ValueError("No trigger payload provided")
+        raise ValueError("未提供 trigger 负载")
 
     payload = json.loads(sys.argv[1])
     pcap = payload.get("pcap")
     output = payload.get("output")
     if not pcap or not output:
-        raise ValueError("trigger payload requires 'pcap' and 'output'")
+        raise ValueError("trigger 负载必须包含 'pcap' 和 'output'")
 
     namespace = argparse.Namespace(
         pcap=pcap,
@@ -149,15 +149,15 @@ def run_with_trigger() -> Dict[str, Any]:
 
 
 def train() -> None:
-    raise NotImplementedError("This prototype focuses on CLI reverse pipeline; train command is not implemented.")
+    raise NotImplementedError("当前原型聚焦 CLI 逆向流程，暂未实现 train 命令。")
 
 
 def replay() -> None:
-    raise NotImplementedError("Replay is not implemented for this flow prototype.")
+    raise NotImplementedError("当前 Flow 原型暂未实现 replay。")
 
 
 def test() -> None:
-    raise NotImplementedError("Use `python -m unittest` for local tests.")
+    raise NotImplementedError("请使用 `python -m unittest` 运行本地测试。")
 
 
 if __name__ == "__main__":

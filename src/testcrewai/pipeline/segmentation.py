@@ -52,7 +52,7 @@ def _fallback_candidates(profile: TrafficProfile) -> List[FieldBoundaryCandidate
                     end=end,
                     confidence=0.45,
                     source_tool="fallback_segmenter",
-                    reason="Length-based fallback segmentation",
+                    reason="基于长度的 fallback 切分",
                 )
             )
 
@@ -160,7 +160,7 @@ def _segmentation_quality_issue(
 ) -> tuple[bool, str]:
     # 质量门控：用于判断是否需要启用备份分段工具。
     if not candidates:
-        return True, "primary segmentation produced no candidates"
+        return True, "主分段工具未产出候选字段"
 
     grouped: Dict[str, List[FieldBoundaryCandidate]] = {}
     for item in candidates:
@@ -168,7 +168,7 @@ def _segmentation_quality_issue(
 
     cluster_lengths = _cluster_length_map(profile)
     if not grouped:
-        return True, "primary segmentation produced no grouped candidates"
+        return True, "主分段工具未产出可分组候选字段"
 
     for cluster_id, items in grouped.items():
         if len(items) < max(1, min_fields_per_cluster):
@@ -273,7 +273,7 @@ class SegmentationAgentStage:
             payload = {
                 "candidates": [],
                 "tool_errors": [
-                    "No segmentation executed because no parseable traffic was available.",
+                    "未执行字段切分：当前没有可解析流量。",
                 ],
                 "runtime_info": runtime_info,
             }
@@ -339,7 +339,7 @@ class SegmentationAgentStage:
                             continue
                     candidates.extend(parsed_candidates)
                 else:
-                    tool_errors.append(tool_result.error or f"{tool_name} failed")
+                    tool_errors.append(tool_result.error or f"{tool_name} 执行失败")
                     continue
 
             elif tool_name == "nemesys_adapter":
@@ -365,11 +365,11 @@ class SegmentationAgentStage:
                             continue
                     candidates.extend(parsed_candidates)
                 else:
-                    tool_errors.append(tool_result.error or f"{tool_name} failed")
+                    tool_errors.append(tool_result.error or f"{tool_name} 执行失败")
                     continue
 
             else:
-                tool_errors.append(f"unknown segmentation tool: {tool_name}")
+                tool_errors.append(f"未知分段工具: {tool_name}")
                 continue
 
             if idx == 0:
@@ -396,7 +396,7 @@ class SegmentationAgentStage:
                 candidates.clear()
                 candidates.extend(parsed_candidates)
                 tool_errors.append(
-                    f"Segmentation backup tool triggered ({tool_name}): {quality_reason}; "
+                    f"Segmentation backup tool triggered（分段备份已触发）({tool_name}): {quality_reason}; "
                     f"backup_candidates={len(parsed_candidates)}"
                 )
 
@@ -404,7 +404,7 @@ class SegmentationAgentStage:
 
         if not candidates:
             candidates.extend(_fallback_candidates(profile))
-            tool_errors.append("Segmentation fallback triggered because tool output was empty.")
+            tool_errors.append("分段 fallback 已触发：工具输出为空。")
 
         candidates = _normalize_candidate_clusters(candidates, profile)
         candidates = _deduplicate(candidates)

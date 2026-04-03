@@ -77,7 +77,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
             result = agent.kickoff(prompt)
             self.state.llm_notes[agent_name] = (result.raw or "")[:1200]
         except Exception as exc:
-            self.state.warnings.append(f"LLM note skipped for {agent_name}: {exc}")
+            self.state.warnings.append(f"LLM 注释已跳过（{agent_name}）: {exc}")
     
     # 起点（用 @start + @listen 装饰器定义固定执行顺序，Flow 框架会自动按顺序运行）
     @start()
@@ -85,14 +85,14 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
         # 校验文件、创建输出目录、初始化日志、定义所有结果文件的保存路径。
         pcap_path = Path(self.state.pcap_path)
         if not pcap_path.exists():
-            raise FileNotFoundError(f"Input capture not found: {pcap_path}")
+            raise FileNotFoundError(f"未找到输入抓包文件: {pcap_path}")
 
         output_dir = ensure_dir(self.state.output_dir)
         self.logger = setup_logger(output_dir / "run.log")
-        self.logger.info("Flow bootstrap done. Input=%s Output=%s", pcap_path, output_dir)
+        self.logger.info("Flow 初始化完成。输入=%s 输出=%s", pcap_path, output_dir)
         if self.state.use_llm and not self._llm_enabled():
             self.state.warnings.append(
-                "LLM is enabled by flag, but no supported API key was found in environment."
+                "已开启 --use-llm，但环境中未检测到受支持的 API Key。"
             )
 
         self.state.artifacts.traffic_profile_path = output_dir / "traffic_profile.json"
@@ -107,7 +107,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     def run_preprocess(self, _signal: str) -> TrafficProfile:
         # 阶段1：流量预处理与统计特征提取（解析 pcap，提取流量特征，生成流量档案）。
         assert self.logger is not None
-        self.logger.info("Step: preprocess")
+        self.logger.info("步骤：预处理（preprocess）")
         try:
             profile = self.preprocess_stage.run(
                 pcap_path=self.state.pcap_path,
@@ -121,11 +121,11 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
                 self.state.errors.append(f"preprocess: {item}")
         except Exception as exc:
             # 预处理失败时的兜底逻辑
-            self.state.errors.append(f"preprocess failed: {exc}")
+            self.state.errors.append(f"预处理失败: {exc}")
             self.state.traffic_profile = TrafficProfile(input_file=self.state.pcap_path, errors=[str(exc)])
         self._collect_llm_note(
             "preprocess_agent",
-            f"Summarize this traffic profile in <=120 words with caveats: {self.state.traffic_profile.model_dump_json()}",
+            f"请用中文在 120 字以内总结这个流量画像，并说明局限：{self.state.traffic_profile.model_dump_json()}",
         )
         return self.state.traffic_profile
 
@@ -133,18 +133,18 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     def run_tool_selection(self, profile: TrafficProfile) -> ExecutionPlan:
         # 阶段2：根据流量特征选择主工具与备份工具。
         assert self.logger is not None
-        self.logger.info("Step: tool_selection")
+        self.logger.info("步骤：工具选择（tool_selection）")
         try:
             plan = self.selector_stage.run(profile=profile, output_dir=self.state.output_dir, logger=self.logger)
             self.state.execution_plan = plan
             for item in plan.warnings:
                 self.state.warnings.append(f"tool_selection: {item}")
         except Exception as exc:
-            self.state.errors.append(f"tool_selection failed: {exc}")
+            self.state.errors.append(f"工具选择失败: {exc}")
             self.state.execution_plan = ExecutionPlan(
                 execution_mode="single",
                 selected_tools=["netzob_adapter"],
-                rationale=["fallback default plan"],
+                rationale=["使用默认兜底计划"],
             )
         self._collect_llm_note(
             "tool_selector_agent",
@@ -156,7 +156,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     def run_segmentation(self, plan: ExecutionPlan) -> list[FieldBoundaryCandidate]:
         # 阶段3：字段边界切分（单工具优先，必要时启用备份）。
         assert self.logger is not None
-        self.logger.info("Step: segmentation")
+        self.logger.info("步骤：字段切分（segmentation）")
 
         profile = self.state.traffic_profile or TrafficProfile(input_file=self.state.pcap_path)
         traffic_profile_path = str(self.state.artifacts.traffic_profile_path or Path(self.state.output_dir) / "traffic_profile.json")
@@ -175,12 +175,12 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
             )
             self.state.segment_candidates = boundaries
         except Exception as exc:
-            self.state.errors.append(f"segmentation failed: {exc}")
+            self.state.errors.append(f"字段切分失败: {exc}")
             self.state.segment_candidates = []
 
         self._collect_llm_note(
             "segmentation_agent",
-            f"Given candidates, provide 3 risks and 3 improvement tips: {len(self.state.segment_candidates)} candidates.",
+            f"请基于候选切分结果给出 3 个风险点和 3 个改进建议。当前候选数量：{len(self.state.segment_candidates)}。",
         )
         return self.state.segment_candidates
 
@@ -188,7 +188,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     def run_semantic_inference(self, boundaries: list[FieldBoundaryCandidate]) -> list[FieldSemanticCandidate]:
         # 阶段4：字段语义推断，并对齐到分段边界。
         assert self.logger is not None
-        self.logger.info("Step: semantic_inference")
+        self.logger.info("步骤：语义推断（semantic_inference）")
 
         plan = self.state.execution_plan or ExecutionPlan(selected_tools=["netplier_adapter"], execution_mode="single")
         segment_candidates_path = str(self.state.artifacts.segment_candidates_path or Path(self.state.output_dir) / "segment_candidates.json")
@@ -210,12 +210,12 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
             )
             self.state.semantic_candidates = semantics
         except Exception as exc:
-            self.state.errors.append(f"semantic inference failed: {exc}")
+            self.state.errors.append(f"语义推断失败: {exc}")
             self.state.semantic_candidates = []
 
         self._collect_llm_note(
             "semantic_inference_agent",
-            f"Explain semantic uncertainty for these candidates: {len(self.state.semantic_candidates)} items.",
+            f"请解释这些语义候选中的不确定性来源，候选数量：{len(self.state.semantic_candidates)}。",
         )
         return self.state.semantic_candidates
 
@@ -223,7 +223,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     def run_fusion(self, semantics: list[FieldSemanticCandidate]) -> ProtocolSchema:
         # 阶段5：融合边界与语义证据，得到最终协议模板。
         assert self.logger is not None
-        self.logger.info("Step: fusion")
+        self.logger.info("步骤：结果融合（fusion）")
 
         profile = self.state.traffic_profile or TrafficProfile(input_file=self.state.pcap_path)
         try:
@@ -236,12 +236,12 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
             )
             self.state.final_schema = schema
         except Exception as exc:
-            self.state.errors.append(f"fusion failed: {exc}")
+            self.state.errors.append(f"融合失败: {exc}")
             self.state.final_schema = ProtocolSchema(input_file=self.state.pcap_path)
 
         self._collect_llm_note(
             "fusion_agent",
-            f"Review schema confidence and mention top 2 weak points: {self.state.final_schema.model_dump_json()}",
+            f"请审阅该 schema 的置信度，并指出最关键的 2 个薄弱点：{self.state.final_schema.model_dump_json()}",
         )
         return self.state.final_schema
 
@@ -249,7 +249,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     def run_report(self, schema: ProtocolSchema) -> AnalysisReport:
         # 阶段6：生成 markdown 报告，便于答辩展示与复盘。
         assert self.logger is not None
-        self.logger.info("Step: report")
+        self.logger.info("步骤：报告生成（report）")
 
         profile = self.state.traffic_profile or TrafficProfile(input_file=self.state.pcap_path)
         plan = self.state.execution_plan or ExecutionPlan(selected_tools=[], execution_mode="single")
@@ -266,12 +266,12 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
             )
             self.state.report = report
         except Exception as exc:
-            self.state.errors.append(f"report generation failed: {exc}")
-            self.state.report = AnalysisReport(title="failed", markdown=str(exc))
+            self.state.errors.append(f"报告生成失败: {exc}")
+            self.state.report = AnalysisReport(title="失败", markdown=str(exc))
 
         self._collect_llm_note(
             "report_agent",
-            "Write one paragraph for thesis defense: what is novel in this prototype?",
+            "请写一段用于中期/毕业答辩的说明：本原型的创新点是什么？",
         )
         return self.state.report
 
@@ -279,7 +279,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     def finish(self, _report: AnalysisReport) -> Dict[str, Any]:
         # 返回运行摘要，包含产物路径、warning/error 与可选 LLM 注释。
         assert self.logger is not None
-        self.logger.info("Flow finished with %d warnings and %d errors", len(self.state.warnings), len(self.state.errors))
+        self.logger.info("Flow 结束：warnings=%d, errors=%d", len(self.state.warnings), len(self.state.errors))
 
         summary = {
             "input": self.state.pcap_path,

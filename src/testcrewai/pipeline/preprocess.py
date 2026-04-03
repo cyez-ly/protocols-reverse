@@ -82,13 +82,13 @@ def _extract_messages_with_scapy(file_path: Path, max_samples: int = 300) -> Tup
     try:
         from scapy.all import BOOTP, DHCP, DNS, IP, TCP, UDP, Raw, rdpcap  # type: ignore
     except Exception:
-        notes.append("scapy unavailable, skip packet-level parse")
+        notes.append("scapy 不可用，跳过基于数据包的解析")
         return [], [], {}, notes
 
     try:
         packets = rdpcap(str(file_path))
     except Exception as exc:
-        notes.append(f"scapy parse failed: {exc}")
+        notes.append(f"scapy 解析失败: {exc}")
         return [], [], {}, notes
 
     payloads: List[bytes] = []
@@ -263,7 +263,7 @@ def _parse_tshark_hex_tokens(text: str) -> List[bytes]:
 def _extract_messages_with_tshark(file_path: Path, timeout_sec: int = 90, max_samples: int = 300) -> Tuple[List[bytes], List[str]]:
     notes: List[str] = []
     if shutil.which("tshark") is None:
-        notes.append("tshark not available for payload extraction fallback")
+        notes.append("tshark 不可用，无法执行 payload 提取兜底")
         return [], notes
 
     runner = ShellRunner()
@@ -275,7 +275,7 @@ def _extract_messages_with_tshark(file_path: Path, timeout_sec: int = 90, max_sa
         command = ["tshark", "-r", str(file_path), "-T", "fields", "-e", field_name]
         result = runner.run(command=command, timeout_sec=timeout_sec)
         if result.return_code != 0:
-            notes.append(f"tshark field {field_name} failed: {result.stderr or 'unknown error'}")
+            notes.append(f"tshark 字段 {field_name} 提取失败: {result.stderr or 'unknown error'}")
             continue
 
         field_samples = 0
@@ -294,17 +294,17 @@ def _extract_messages_with_tshark(file_path: Path, timeout_sec: int = 90, max_sa
                 break
 
         if field_samples > 0:
-            notes.append(f"payload fallback via tshark field '{field_name}' succeeded, samples={field_samples}")
+            notes.append(f"通过 tshark 字段 '{field_name}' 的 payload 兜底成功，samples={field_samples}")
         else:
-            notes.append(f"tshark field '{field_name}' returned no payload bytes")
+            notes.append(f"tshark 字段 '{field_name}' 未返回 payload 字节")
 
         if len(payloads) >= max_samples:
             break
 
     if payloads:
-        notes.append(f"tshark payload fallback total samples={len(payloads)}")
+        notes.append(f"tshark payload 兜底总样本数={len(payloads)}")
     else:
-        notes.append("tshark payload extraction returned no payload bytes")
+        notes.append("tshark payload 提取未返回任何字节")
     return payloads, notes
 
 
@@ -312,14 +312,14 @@ def _extract_protocols_with_tshark(file_path: Path, timeout_sec: int = 90) -> Tu
     notes: List[str] = []
     protocols: Dict[str, int] = defaultdict(int)
     if shutil.which("tshark") is None:
-        notes.append("tshark not available for protocol extraction fallback")
+        notes.append("tshark 不可用，无法执行协议识别兜底")
         return {}, notes
 
     runner = ShellRunner()
     command = ["tshark", "-r", str(file_path), "-T", "fields", "-e", "frame.protocols"]
     result = runner.run(command=command, timeout_sec=timeout_sec)
     if result.return_code != 0:
-        notes.append(f"tshark frame.protocols extraction failed: {result.stderr or 'unknown error'}")
+        notes.append(f"tshark frame.protocols 提取失败: {result.stderr or 'unknown error'}")
         return {}, notes
 
     for line in result.stdout.splitlines():
@@ -333,7 +333,7 @@ def _extract_protocols_with_tshark(file_path: Path, timeout_sec: int = 90) -> Tu
             if token in {"tcp", "udp", "dns", "dhcp", "bootp", "ntp", "icmp", "http", "tls", "quic"}:
                 protocols[token] += 1
 
-    notes.append(f"tshark frame.protocols extraction collected {len(protocols)} protocol hints")
+    notes.append(f"tshark frame.protocols 共提取到 {len(protocols)} 个协议线索")
     return dict(protocols), notes
 
 
@@ -404,7 +404,7 @@ def _downselect_payloads_for_reverse(
     if len(selected_payloads) >= max(8, int(len(payloads) * 0.55)):
         notes = [
             (
-                "payload down-selection enabled for reverse stability: "
+                "已启用 payload down-selection（降采样）以提升逆向稳定性: "
                 f"kept_lengths={sorted(selected_lengths)}, "
                 f"kept={len(selected_payloads)}/{len(payloads)}"
             )
@@ -434,8 +434,8 @@ class PreprocessAgentStage:
         ):
             profile.notes.append(
                 (
-                    "capture extension does not match file header: "
-                    f"suffix={extension_format}, magic={magic_format}; using magic result"
+                    "抓包文件后缀与文件头不一致: "
+                    f"suffix={extension_format}, magic={magic_format}; 将以 magic 判定为准"
                 )
             )
 
@@ -443,11 +443,11 @@ class PreprocessAgentStage:
             suffix_hint = input_path.suffix.lower() or "(no suffix)"
             profile.errors.append(
                 (
-                    f"Input file suffix is {suffix_hint}, but pcap/pcapng magic header is invalid. "
-                    "This file may be damaged or not a real capture."
+                    f"输入文件后缀为 {suffix_hint}，但 pcap/pcapng magic header 非法。"
+                    "文件可能损坏，或并非真实抓包文件。"
                 )
             )
-            profile.notes.append("preprocess aborted: invalid pcap/pcapng header")
+            profile.notes.append("预处理已中止：pcap/pcapng 文件头无效")
             profile_path = Path(output_dir) / "traffic_profile.json"
             write_json(profile_path, profile)
             logger.info("Preprocess completed -> %s", profile_path)
@@ -459,13 +459,13 @@ class PreprocessAgentStage:
             extra_args={"timeout_sec": str(timeout_sec), "python_bin": python_bin},
         )
         if tshark_result.success:
-            profile.notes.append("tshark summary collected")
+            profile.notes.append("已收集 tshark 摘要")
             summary_text = tshark_result.data.get("summary", "").lower()
             for keyword in ["tcp", "udp", "http", "dns", "tls", "dhcp", "bootp"]:
                 if keyword in summary_text and keyword not in profile.protocols_observed:
                     profile.protocols_observed.append(keyword)
         else:
-            profile.notes.append(f"tshark unavailable or failed: {tshark_result.error}")
+            profile.notes.append(f"tshark 不可用或执行失败: {tshark_result.error}")
 
         payloads, session_features, protocols, parse_notes = _extract_messages_with_scapy(input_path)
         profile.notes.extend(parse_notes)
@@ -499,7 +499,7 @@ class PreprocessAgentStage:
             if is_capture_format:
                 profile.protocol_style = "unknown"
                 profile.errors.append(
-                    "No parseable packets extracted from capture. Check file integrity and tshark/scapy availability."
+                    "未从抓包中提取到可解析数据包。请检查文件完整性以及 tshark/scapy 是否可用。"
                 )
             else:
                 raw = input_path.read_bytes() if input_path.exists() else b""
@@ -515,9 +515,9 @@ class PreprocessAgentStage:
                     profile.protocol_style = _classify_protocol_style(profile.mean_entropy, profile.mean_printable_ratio)
                     profile.sample_messages_hex = [window[:128].hex()]
                     profile.message_clusters = _build_message_clusters([window[:128]])
-                    profile.notes.append("fallback mode: file-byte window used as pseudo message")
+                    profile.notes.append("fallback 模式：使用文件字节窗口作为伪消息")
                 else:
-                    profile.errors.append("empty capture file or read failure")
+                    profile.errors.append("抓包文件为空或读取失败")
         else:
             payloads, downselect_notes = _downselect_payloads_for_reverse(payloads)
             profile.notes.extend(downselect_notes)

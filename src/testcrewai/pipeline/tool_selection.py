@@ -19,7 +19,7 @@ def _choose_segmentation_primary(profile: TrafficProfile, protos: Set[str]) -> t
     if style == "text" or printable >= 0.45:
         return (
             "netzob_adapter",
-            "Text-like traffic favors Netzob entropy/cluster partition as the primary segmenter.",
+            "流量更偏文本协议，优先使用 Netzob（基于熵/聚类）进行字段切分。",
             0.82,
         )
 
@@ -28,13 +28,13 @@ def _choose_segmentation_primary(profile: TrafficProfile, protos: Set[str]) -> t
     if style == "binary" or printable <= 0.2 or bool(protos & binary_hints):
         return (
             "nemesys_adapter",
-            "Binary-like traffic favors NEMESYS intrinsic per-message transition segmentation.",
+            "流量更偏二进制协议，优先使用 NEMESYS（基于消息内转折）进行切分。",
             0.81,
         )
 
     return (
         "netzob_adapter",
-        "Fallback to Netzob as a robust default segmenter under ambiguous style.",
+        "协议风格不明确，回退到更稳健的默认切分器 Netzob。",
         0.74,
     )
 
@@ -46,7 +46,7 @@ def _choose_semantic_primary(profile: TrafficProfile, protos: Set[str]) -> tuple
     if style == "binary" or bool(protos & binary_friendly):
         return (
             "binaryinferno_adapter",
-            "Binary-like protocol cues favor BinaryInferno as the primary semantic inferencer.",
+            "二进制协议线索较强，优先使用 BinaryInferno 做语义推断。",
             0.81,
         )
 
@@ -55,13 +55,13 @@ def _choose_semantic_primary(profile: TrafficProfile, protos: Set[str]) -> tuple
     if style == "text" or bool(protos & netplier_friendly):
         return (
             "netplier_adapter",
-            "Type/length-style semantic cues are likely; choose NetPlier as primary semantic inferencer.",
+            "存在明显 type/length 风格线索，优先使用 NetPlier 做语义推断。",
             0.8,
         )
 
     return (
         "binaryinferno_adapter",
-        "Binary-oriented semantic inference (id/checksum/timestamp/payload cues) favors BinaryInferno.",
+        "默认采用面向二进制场景的语义推断工具 BinaryInferno（id/checksum/timestamp/payload）。",
         0.79,
     )
 
@@ -74,9 +74,9 @@ class ToolSelectorAgentStage:
                 execution_mode="single",
                 decisions=[],
                 selected_tools=[],
-                rationale=["No parseable packets were extracted; skip downstream reverse tools."],
+                rationale=["未提取到可解析数据包，跳过后续逆向工具执行。"],
                 warnings=[
-                    "Input capture parsing failed. Please validate pcap/pcapng file integrity and parser environment.",
+                    "输入抓包解析失败，请检查 pcap/pcapng 文件完整性与解析环境。",
                 ],
             )
             output_path = Path(output_dir) / "execution_plan.json"
@@ -109,7 +109,7 @@ class ToolSelectorAgentStage:
                     selected=False,
                     mode="single",
                     confidence=round(max(0.5, seg_primary_conf - 0.08), 3),
-                    reason="Backup segmentation tool; trigger when primary segmentation fails or yields empty candidates.",
+                    reason="分段备份工具；当主分段失败或产出为空时触发。",
                 ),
                 ToolDecision(
                     tool_name=sem_primary,
@@ -124,8 +124,7 @@ class ToolSelectorAgentStage:
                     mode="single",
                     confidence=round(max(0.5, sem_primary_conf - 0.08), 3),
                     reason=(
-                        "Backup semantic tool; trigger when primary semantic fails/empty "
-                        "or unknown ratio is too high."
+                        "语义备份工具；当主语义失败/为空，或 unknown 占比过高时触发。"
                     ),
                 ),
             ]
@@ -133,20 +132,19 @@ class ToolSelectorAgentStage:
 
         rationale.append(
             (
-                "Single-tool-first strategy: pick one primary tool for segmentation and one for semantics, "
-                "keep backups for conditional fallback."
+                "采用“单工具优先”策略：分段与语义各选择一个主工具，并保留备份工具按条件触发。"
             )
         )
         rationale.append(
             (
-                f"Primary tools -> segmentation: {seg_primary}, semantics: {sem_primary}; "
-                f"backup tools -> segmentation: {seg_backup}, semantics: {sem_backup}."
+                f"主工具 -> segmentation: {seg_primary}, semantics: {sem_primary}; "
+                f"备份工具 -> segmentation: {seg_backup}, semantics: {sem_backup}。"
             )
         )
 
         selected_tools = [decision.tool_name for decision in decisions if decision.selected]
         if not selected_tools:
-            warnings.append("No tools selected by strategy; fallback to netzob_adapter")
+            warnings.append("策略未选出工具，回退到 netzob_adapter + netplier_adapter")
             selected_tools = ["netzob_adapter", "netplier_adapter"]
 
         execution_mode = "single"

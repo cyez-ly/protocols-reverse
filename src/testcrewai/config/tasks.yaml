@@ -6,52 +6,103 @@
 # 1) 预处理任务
 preprocess_task:
   description: >
-    Read unknown traffic capture {pcap_path}, extract deterministic traffic features,
-    and produce a normalized traffic profile JSON.
+    Read unknown traffic capture {pcap_path}. This step exists to transform raw
+    packets into deterministic, audit-friendly features so downstream tool selection
+    and inference are evidence-based rather than prompt-only.
+    Use parser/tool fallback paths when needed, but always preserve caveats.
   expected_output: >
-    A JSON-compatible traffic profile with sessions, packet statistics, entropy,
-    printable ratio, and protocol style classification.
+    Write traffic_profile.json with at least these keys:
+    input_file, capture_format, packet_count, session_count, min_packet_length,
+    max_packet_length, avg_packet_length, std_packet_length, mean_entropy,
+    mean_printable_ratio, protocol_style, protocols_observed, session_features,
+    message_clusters, sample_messages_hex, notes, errors.
+    protocol_style must be one of: text, binary, hybrid, unknown.
+    On partial/failed parsing, still emit traffic_profile.json with populated
+    notes/errors to keep the pipeline recoverable.
   agent: preprocess_agent
 
 # 2) 工具选择任务
 tool_selection_task:
   description: >
-    Select protocol reverse tools and execution mode based on the traffic profile,
-    with explicit reason and fallback plan.
+    Read traffic_profile.json and choose stage-wise tools with rationale.
+    The objective is reliable execution under uncertainty: one primary tool for
+    segmentation and one for semantic inference, each with explicit backup triggers.
   expected_output: >
-    A tool execution plan containing selected tools, mode, confidence, and rationale.
+    Write execution_plan.json with keys:
+    execution_mode, selected_tools, decisions, rationale, warnings.
+    decisions must include objects with:
+    tool_name, selected, mode, confidence, reason.
+    confidence must be in [0, 1].
+    selected_tools must include exactly one primary segmentation tool and one
+    primary semantic tool unless capture parsing is invalid.
   agent: tool_selector_agent
 
 # 3) 字段分段任务
 segmentation_task:
   description: >
-    Generate field boundary candidates from sampled messages and clusters.
+    Generate field boundary candidates from traffic_profile.json using the planned
+    segmentation toolchain. This step should favor stable, explainable boundaries
+    and avoid over-segmentation artifacts.
   expected_output: >
-    Candidate field ranges with confidence, source tool, and explainable reasons.
+    Write segment_candidates.json with keys:
+    candidates, tool_errors, runtime_info.
+    candidates must include objects with:
+    message_cluster, start, end, confidence, source_tool, reason.
+    Constraints:
+    start and end are integers with start < end, confidence in [0, 1], and
+    duplicate ranges removed per cluster.
+    runtime_info should include attempted tools and quality-gate outcomes.
   agent: segmentation_agent
 
 # 4) 语义推断任务
 semantic_inference_task:
   description: >
-    Infer likely semantics for candidate fields and provide confidence scores.
+    Infer likely semantics for segment candidates and align semantics to boundary
+    ranges when tools disagree. This step should maximize useful labels while
+    preserving uncertainty and alignment provenance.
   expected_output: >
-    Semantic candidates for type, length, timestamp, id, payload, and checksum.
+    Write semantic_candidates.json with keys:
+    candidates, tool_errors, runtime_info.
+    candidates must include objects with:
+    message_cluster, field_range, semantic_type, confidence, source_tool, reason.
+    field_range format must be "start:end".
+    semantic_type should use this controlled set when possible:
+    type, length, timestamp, id, session_id, payload, checksum, unknown.
+    confidence must be in [0, 1].
   agent: semantic_inference_agent
 
 # 5) 融合任务
 fusion_task:
   description: >
-    Fuse segmentation and semantic evidence into a final protocol schema.
+    Fuse boundary and semantic evidence into one conflict-resolved schema with
+    interpretable confidence. The purpose is to deliver a usable protocol template
+    rather than isolated tool outputs.
   expected_output: >
-    A conflict-resolved schema with message clusters, field definitions, and
-    global confidence.
+    Write final_schema.json with keys:
+    input_file, message_clusters, fields, conflict_resolutions, global_confidence,
+    limitations.
+    fields must include:
+    message_cluster, name, start, end, semantic_type, confidence, evidences.
+    Each evidence item must include:
+    evidence_type, source, score, detail.
+    global_confidence must be in [0, 1].
   agent: fusion_agent
 
 # 6) 报告任务
 report_task:
   description: >
-    Summarize the whole reverse process and create a markdown report.
+    Generate a defense-ready markdown report that traces the pipeline from input
+    profile to final schema, with explicit reasoning, caveats, and conflicts.
   expected_output: >
-    A markdown report including overview, tool rationale, candidates, fusion result,
-    conflict handling, and limitations.
+    Write report.md in Markdown, including these sections at minimum:
+    1) Input Overview
+    2) Traffic Profile Summary
+    3) Tool Selection Rationale
+    4) Segmentation Candidates
+    5) Semantic Candidates
+    6) Final Fused Schema
+    7) Conflict Resolution Notes
+    8) Limitations and Next Steps
+    The report must reference generated artifacts by filename and keep conclusions
+    consistent with JSON outputs.
   agent: report_agent

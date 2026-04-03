@@ -22,7 +22,7 @@ def _format_boundary_table(candidates: List[FieldBoundaryCandidate], max_rows: i
             f"| {item.message_cluster} | {item.start}:{item.end} | {item.confidence:.3f} | {item.source_tool} | {item.reason} |"
         )
     if len(candidates) > max_rows:
-        lines.append(f"| ... | ... | ... | ... | only first {max_rows} rows shown |")
+        lines.append(f"| ... | ... | ... | ... | 仅展示前 {max_rows} 行 |")
     return "\n".join(lines)
 
 
@@ -33,7 +33,7 @@ def _format_semantic_table(candidates: List[FieldSemanticCandidate], max_rows: i
             f"| {item.message_cluster} | {item.field_range} | {item.semantic_type} | {item.confidence:.3f} | {item.source_tool} | {item.reason} |"
         )
     if len(candidates) > max_rows:
-        lines.append(f"| ... | ... | ... | ... | ... | only first {max_rows} rows shown |")
+        lines.append(f"| ... | ... | ... | ... | ... | 仅展示前 {max_rows} 行 |")
     return "\n".join(lines)
 
 
@@ -74,7 +74,7 @@ class ReportAgentStage:
             f"- 平均熵: `{profile.mean_entropy}`",
             f"- 可打印字符比例: `{profile.mean_printable_ratio}`",
             f"- 协议风格判定: `{profile.protocol_style}`",
-            f"- 协议线索: `{', '.join(profile.protocols_observed) if profile.protocols_observed else 'N/A'}`",
+            f"- 协议线索: `{', '.join(profile.protocols_observed) if profile.protocols_observed else '无'}`",
             "",
             "## 2. 工具选择策略",
             f"- 执行模式: `{execution_plan.execution_mode}`",
@@ -86,8 +86,8 @@ class ReportAgentStage:
         for decision in execution_plan.decisions:
             md_lines.append(
                 (
-                    f"- `{decision.tool_name}` | selected={decision.selected} | "
-                    f"confidence={decision.confidence:.3f} | reason={decision.reason}"
+                    f"- `{decision.tool_name}` | selected(是否选中)={decision.selected} | "
+                    f"confidence(置信度)={decision.confidence:.3f} | reason(原因)={decision.reason}"
                 )
             )
 
@@ -140,10 +140,10 @@ class ReportAgentStage:
         markdown = "\n".join(md_lines) + "\n"
         report_path = Path(output_dir) / "report.md"
         write_text(report_path, markdown)
-        logger.info("Report generated -> %s", report_path)
+        logger.info("报告已生成 -> %s", report_path)
 
         return AnalysisReport(
-            title="Unknown Protocol Reverse Report",
+            title="未知协议逆向分析报告",
             markdown=markdown,
             output_path=str(report_path),
         )

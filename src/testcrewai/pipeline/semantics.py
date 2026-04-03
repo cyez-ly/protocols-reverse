@@ -22,20 +22,20 @@ def _fallback_semantics(boundaries: List[FieldBoundaryCandidate]) -> List[FieldS
         for idx, candidate in enumerate(ordered):
             semantic_type = "unknown"
             confidence = 0.38
-            reason = "fallback semantic rule"
+            reason = "fallback 语义规则"
 
             if idx == 0 and candidate.end - candidate.start <= 2:
                 semantic_type = "type"
                 confidence = 0.55
-                reason = "first short field tends to be message type"
+                reason = "首个短字段通常更像消息类型"
             elif idx == 1 and candidate.end - candidate.start <= 4:
                 semantic_type = "length"
                 confidence = 0.52
-                reason = "second short field may encode payload length"
+                reason = "第二个短字段可能是长度字段"
             elif idx == len(ordered) - 1:
                 semantic_type = "payload"
                 confidence = 0.58
-                reason = "tail field is usually payload in fallback strategy"
+                reason = "在 fallback 策略中，尾字段通常视为 payload"
 
             results.append(
                 FieldSemanticCandidate(
@@ -222,7 +222,7 @@ class SemanticInferenceAgentStage:
             payload = {
                 "candidates": [],
                 "tool_errors": [
-                    "No semantic inference executed because no segment candidates were available.",
+                    "未执行语义推断：当前没有可用字段切分候选。",
                 ],
                 "runtime_info": runtime_info,
             }
@@ -249,7 +249,7 @@ class SemanticInferenceAgentStage:
                     },
                 )
                 if not netplier_result.success:
-                    tool_errors.append(netplier_result.error or "netplier adapter failed")
+                    tool_errors.append(netplier_result.error or "netplier 适配器执行失败")
                     return parsed
                 runtime_info["netplier_python_bin"] = str(netplier_result.data.get("python_bin", ""))
                 backend = str(netplier_result.data.get("backend", "")).strip()
@@ -277,7 +277,7 @@ class SemanticInferenceAgentStage:
                     },
                 )
                 if not inferno_result.success:
-                    tool_errors.append(inferno_result.error or "binaryinferno adapter failed")
+                    tool_errors.append(inferno_result.error or "binaryinferno 适配器执行失败")
                     return parsed
                 runtime_info["binaryinferno_python_bin"] = str(inferno_result.data.get("python_bin", ""))
                 backend = str(inferno_result.data.get("backend", "")).strip()
@@ -293,7 +293,7 @@ class SemanticInferenceAgentStage:
                 runtime_info[f"{tool_name}_aligned_count"] = str(aligned_count)
                 return parsed
 
-            tool_errors.append(f"unknown semantic tool: {tool_name}")
+            tool_errors.append(f"未知语义工具: {tool_name}")
             return parsed
 
         primary_tool = ordered_tools[0]
@@ -304,7 +304,7 @@ class SemanticInferenceAgentStage:
         backup_reason = ""
         if not primary_candidates:
             need_backup = True
-            backup_reason = f"primary semantic tool `{primary_tool}` produced no usable candidates."
+            backup_reason = f"主语义工具 `{primary_tool}` 未产出可用候选。"
         else:
             primary_unknown_ratio = _unknown_ratio(primary_candidates)
             runtime_info["semantic_primary_unknown_ratio"] = f"{primary_unknown_ratio:.3f}"
@@ -317,12 +317,12 @@ class SemanticInferenceAgentStage:
             if primary_unknown_ratio >= unknown_ratio_trigger:
                 need_backup = True
                 backup_reason = (
-                    f"primary semantic unknown ratio {primary_unknown_ratio:.3f} >= {unknown_ratio_trigger:.2f}"
+                    f"主语义 unknown 占比 {primary_unknown_ratio:.3f} >= {unknown_ratio_trigger:.2f}"
                 )
             elif len(primary_candidates) >= dominant_min_candidates and dominant_ratio >= dominant_ratio_trigger:
                 need_backup = True
                 backup_reason = (
-                    f"primary semantic dominant ratio too high: type={dominant_type}, "
+                    f"主语义类型过于单一: type={dominant_type}, "
                     f"ratio={dominant_ratio:.3f} >= {dominant_ratio_trigger:.2f}"
                 )
 
@@ -332,17 +332,17 @@ class SemanticInferenceAgentStage:
             if backup_candidates:
                 semantic_candidates.extend(backup_candidates)
                 tool_errors.append(
-                    f"Semantic backup tool triggered ({backup_tool}): {backup_reason} "
+                    f"Semantic backup tool triggered（语义备份已触发）({backup_tool}): {backup_reason} "
                     f"backup_candidates={len(backup_candidates)}"
                 )
             else:
                 tool_errors.append(
-                    f"Semantic backup tool triggered ({backup_tool}) but produced no candidates: {backup_reason}"
+                    f"Semantic backup tool triggered（语义备份已触发）({backup_tool})，但未产出候选: {backup_reason}"
                 )
 
         if not semantic_candidates:
             semantic_candidates.extend(_fallback_semantics(boundaries))
-            tool_errors.append("Semantic fallback triggered because tool outputs were empty.")
+            tool_errors.append("语义 fallback 已触发：工具输出为空。")
 
         output_path = Path(output_dir) / "semantic_candidates.json"
         payload = {

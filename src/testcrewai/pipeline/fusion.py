@@ -190,7 +190,7 @@ class FusionAgentStage:
                 semantic_score = 0.35
                 semantic_type = "unknown"
                 semantic_source = "none"
-                semantic_reason = "no semantic evidence"
+                semantic_reason = "无语义证据"
 
                 if semantic_candidates:
                     span = max(0, end - start)
@@ -251,8 +251,8 @@ class FusionAgentStage:
                             if challenger_vote >= best_vote * prefer_non_unknown_ratio:
                                 conflict_notes.append(
                                     (
-                                        f"{cluster_id} {start}:{end} semantic tie-break: "
-                                        f"prefer non-unknown `{challenger_type}` over unknown "
+                                        f"{cluster_id} {start}:{end} 语义平票裁决: "
+                                        f"优先选择非 unknown 的 `{challenger_type}` "
                                         f"(votes {challenger_vote:.3f} vs {best_vote:.3f})"
                                     )
                                 )
@@ -267,8 +267,8 @@ class FusionAgentStage:
                             if challenger_vote >= best_vote * prefer_non_generic_ratio:
                                 conflict_notes.append(
                                     (
-                                        f"{cluster_id} {start}:{end} semantic tie-break: "
-                                        f"prefer non-generic `{challenger_type}` over `{best_type}` "
+                                        f"{cluster_id} {start}:{end} 语义平票裁决: "
+                                        f"优先选择更具体的 `{challenger_type}`，而非 `{best_type}` "
                                         f"(votes {challenger_vote:.3f} vs {best_vote:.3f})"
                                     )
                                 )
@@ -291,8 +291,8 @@ class FusionAgentStage:
                         if abs(top_vote - second_vote) <= 0.08 and top_type != second_type:
                             conflict_notes.append(
                                 (
-                                    f"{cluster_id} {start}:{end} semantic conflict: "
-                                    f"{top_type} vs {second_type}, close aggregated votes observed"
+                                    f"{cluster_id} {start}:{end} 语义冲突: "
+                                    f"{top_type} vs {second_type}，聚合票数接近"
                                 )
                             )
 
@@ -310,7 +310,7 @@ class FusionAgentStage:
                                 evidence_type="boundary",
                                 source="fusion",
                                 score=round(boundary_score, 3),
-                                detail="weighted by boundary candidate confidence and tool reliability",
+                                detail="由边界候选置信度与工具可靠度加权得到",
                             ),
                             EvidenceItem(
                                 evidence_type="semantic",
@@ -330,8 +330,8 @@ class FusionAgentStage:
             conflict_resolutions=conflict_notes,
             global_confidence=global_confidence,
             limitations=[
-                "This prototype relies on sampled payloads and heuristic scoring, not full grammar induction.",
-                "When external tools are unavailable, fallback logic may reduce structural precision.",
+                "该原型依赖采样 payload 与启发式评分，并非完整语法归纳。",
+                "当外部工具不可用时，会触发 fallback 逻辑，结构精度可能下降。",
             ],
         )
 

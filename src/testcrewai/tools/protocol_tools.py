@@ -36,11 +36,11 @@ def _validate_python_bin(python_bin: str) -> str | None:
     path = Path(python_bin).expanduser()
     if path.is_dir():
         suggestion = path / "bin" / "python"
-        return f"Python path points to a directory: {path}. Try interpreter file: {suggestion}"
+        return f"Python 路径指向的是目录: {path}。请改为解释器文件: {suggestion}"
     if not path.exists():
-        return f"Python interpreter not found: {path}"
+        return f"未找到 Python 解释器: {path}"
     if not os.access(path, os.X_OK):
-        return f"Python interpreter is not executable: {path}"
+        return f"Python 解释器不可执行: {path}"
     return None
 
 
@@ -189,7 +189,7 @@ def _normalize_capture_for_official(
     try:
         profile_payload = read_json(profile_file)
     except Exception as exc:
-        notes.append(f"official capture normalization skipped: cannot read profile ({exc})")
+        notes.append(f"官方抓包归一化已跳过：无法读取 profile（{exc}）")
         return profile_path, notes
 
     source_capture = str(profile_payload.get("input_file", "")).strip()
@@ -198,7 +198,7 @@ def _normalize_capture_for_official(
 
     source_path = Path(source_capture)
     if not source_path.exists():
-        notes.append(f"official capture normalization skipped: input capture not found ({source_path})")
+        notes.append(f"官方抓包归一化已跳过：未找到输入抓包（{source_path}）")
         return profile_path, notes
 
     target_capture = Path(output_dir) / f"{prefix}_official_input_normalized.pcap"
@@ -209,10 +209,10 @@ def _normalize_capture_for_official(
         convert_res = runner.run(convert_cmd, timeout_sec=max(20, min(timeout_sec, 120)))
         if convert_res.return_code == 0 and target_capture.exists():
             converted = True
-            notes.append("official capture normalized via editcap -F pcap")
+            notes.append("官方抓包归一化成功：editcap -F pcap")
         else:
             notes.append(
-                "official capture normalization via editcap failed: "
+                "官方抓包归一化失败（editcap）: "
                 + _compact_error_text(convert_res.stderr or convert_res.stdout)
             )
 
@@ -221,10 +221,10 @@ def _normalize_capture_for_official(
         convert_res = runner.run(convert_cmd, timeout_sec=max(20, min(timeout_sec, 120)))
         if convert_res.return_code == 0 and target_capture.exists():
             converted = True
-            notes.append("official capture normalized via tshark rewrite")
+            notes.append("官方抓包归一化成功：tshark 重写")
         else:
             notes.append(
-                "official capture normalization via tshark failed: "
+                "官方抓包归一化失败（tshark）: "
                 + _compact_error_text(convert_res.stderr or convert_res.stdout)
             )
 
@@ -238,7 +238,7 @@ def _normalize_capture_for_official(
         json.dumps(patched_profile, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    notes.append(f"official profile patched with normalized input: {target_capture}")
+    notes.append(f"官方 profile 已写入归一化输入路径: {target_capture}")
     return str(patched_profile_path), notes
 
 
@@ -372,16 +372,16 @@ def _semantic_from_netplier_field_type(
 ) -> tuple[str, float, str]:
     upper = field_type.upper()
     if upper == "D":
-        return "type", 0.78, "official NetPlier deterministic field (D)"
+        return "type", 0.78, "官方 NetPlier 判定字段（D）"
     if upper == "V":
-        return "payload", 0.68, "official NetPlier variable field (V)"
+        return "payload", 0.68, "官方 NetPlier 可变字段（V）"
     if upper == "S":
         if field_span <= 2 or field_start <= 8:
-            return "type", 0.56, "official NetPlier static/separator field (S), short or header-position"
+            return "type", 0.56, "官方 NetPlier 静态/分隔字段（S），短字段或头部位置"
         if field_span <= 8:
-            return "session_id", 0.54, "official NetPlier static/separator field (S), short control marker"
-        return "unknown", 0.48, "official NetPlier static/separator field (S), large span"
-    return "unknown", 0.4, f"official NetPlier field type={field_type}"
+            return "session_id", 0.54, "官方 NetPlier 静态/分隔字段（S），短控制标记"
+        return "unknown", 0.48, "官方 NetPlier 静态/分隔字段（S），跨度较大"
+    return "unknown", 0.4, f"官方 NetPlier 字段类型={field_type}"
 
 
 def _map_official_fields_to_segments(
@@ -428,7 +428,7 @@ def _map_official_fields_to_segments(
             ranked = sorted(semantic_votes.items(), key=lambda entry: entry[1], reverse=True)
             chosen_semantic, chosen_score = ranked[0]
 
-            # If "unknown" only slightly wins, prefer the best non-unknown semantic.
+            # 如果 unknown 仅略高于其他语义，则优先选择更具体的语义类型。
             if chosen_semantic == "unknown" and len(ranked) > 1:
                 for challenger_semantic, challenger_score in ranked[1:]:
                     if challenger_semantic == "unknown":
@@ -445,7 +445,7 @@ def _map_official_fields_to_segments(
             top_reason_items = semantic_reasons.get(chosen_semantic, [])[:3]
             overlap_sem = semantic_raw_overlap.get(chosen_semantic, 0)
             reason = (
-                f"official NetPlier overlap-vote -> {chosen_semantic}; "
+                f"官方 NetPlier overlap-vote -> {chosen_semantic}; "
                 f"coverage={coverage:.2f}; semantic_overlap={overlap_sem}; "
                 f"evidence={'; '.join(top_reason_items)}"
             )
@@ -454,13 +454,13 @@ def _map_official_fields_to_segments(
                 semantic_type = "payload"
                 confidence = 0.46
                 reason = (
-                    "official NetPlier fields exhausted before this range; "
-                    "tail range treated as payload-like"
+                    "官方 NetPlier 字段在该区间前已耗尽；"
+                    "尾部区间按 payload-like 处理"
                 )
             else:
                 semantic_type = "unknown"
                 confidence = 0.33
-                reason = "no overlap with official NetPlier fields"
+                reason = "与官方 NetPlier 字段无重叠"
             results.append(
                 {
                     "message_cluster": item.get("message_cluster", "cluster_1"),
@@ -497,15 +497,15 @@ def _sample_pcap(
     try:
         from scapy.all import Dot1Q, Ether, IPv6, IP, rdpcap, wrpcap  # type: ignore
     except Exception as exc:
-        return str(source_pcap), f"netplier sampling skipped: scapy unavailable ({exc})"
+        return str(source_pcap), f"netplier 采样已跳过：scapy 不可用（{exc}）"
 
     try:
         packets = rdpcap(str(source_pcap), count=max_packets)
     except Exception as exc:
-        return str(source_pcap), f"netplier sampling skipped: failed to read pcap ({exc})"
+        return str(source_pcap), f"netplier 采样已跳过：读取 pcap 失败（{exc}）"
 
     if not packets:
-        return str(source_pcap), "netplier sampling skipped: no packets read from pcap"
+        return str(source_pcap), "netplier 采样已跳过：pcap 未读取到数据包"
 
     sanitized_packets = []
     stripped_vlan = 0
@@ -539,26 +539,26 @@ def _sample_pcap(
         return (
             str(source_pcap),
             (
-                "netplier sampling skipped: scapy could not preserve IP layer for sampled packets; "
-                "use normalized source capture directly"
+                "netplier 采样已跳过：scapy 无法在采样包中保留 IP 层；"
+                "将直接使用归一化后的源抓包"
             ),
         )
 
     if sanitized_packets:
         packets = sanitized_packets
     if not packets:
-        return str(source_pcap), "netplier sampling skipped: packets became empty after vlan/ip sanitation"
+        return str(source_pcap), "netplier 采样已跳过：VLAN/IP 清洗后数据包为空"
 
     try:
         wrpcap(str(sampled_pcap), packets)
     except Exception as exc:
-        return str(source_pcap), f"netplier sampling skipped: failed to write sampled pcap ({exc})"
+        return str(source_pcap), f"netplier 采样已跳过：写入采样 pcap 失败（{exc}）"
 
     return (
         str(sampled_pcap),
         (
-            f"netplier official input sampled to first {len(packets)} packets for runtime stability"
-            f" (stripped_vlan={stripped_vlan}, dropped_non_ip={dropped_non_ip})"
+            f"netplier 官方输入已采样为前 {len(packets)} 个数据包，以提升运行稳定性"
+            f"（stripped_vlan={stripped_vlan}, dropped_non_ip={dropped_non_ip}）"
         ),
     )
 
@@ -662,28 +662,28 @@ def _semantic_from_binaryinferno_hint(symbol: str, detail: str) -> tuple[str, fl
     width_match = re.search(r"(\d+)\s*byte", lower)
     width_bytes = int(width_match.group(1)) if width_match else 0
     if "unknown type variable length" in lower:
-        return "payload", 0.56, f"official BinaryInferno variable-length unknown hint treated as payload-like: {detail}"
+        return "payload", 0.56, f"官方 BinaryInferno 可变长 unknown 提示，按 payload-like 处理: {detail}"
     if "unknown type" in lower and "byte(s)" in lower:
         if width_bytes and width_bytes <= 2:
-            return "type", 0.54, f"official BinaryInferno unknown fixed-width hint treated as type-like: {detail}"
+            return "type", 0.54, f"官方 BinaryInferno 定长 unknown 提示，按 type-like 处理: {detail}"
         if width_bytes and width_bytes <= 4:
-            return "id", 0.5, f"official BinaryInferno unknown fixed-width hint treated as id-like: {detail}"
-        return "id", 0.46, f"official BinaryInferno unknown fixed-width hint treated as id-like: {detail}"
+            return "id", 0.5, f"官方 BinaryInferno 定长 unknown 提示，按 id-like 处理: {detail}"
+        return "id", 0.46, f"官方 BinaryInferno 定长 unknown 提示，按 id-like 处理: {detail}"
     if "checksum" in lower:
-        return "checksum", 0.74, f"official BinaryInferno hint: {detail}"
+        return "checksum", 0.74, f"官方 BinaryInferno 提示: {detail}"
     if "timestamp" in lower or "span seconds" in lower:
-        return "timestamp", 0.72, f"official BinaryInferno hint: {detail}"
+        return "timestamp", 0.72, f"官方 BinaryInferno 提示: {detail}"
     if symbol == "L" or "length" in lower:
-        return "length", 0.78, f"official BinaryInferno hint: {detail}"
+        return "length", 0.78, f"官方 BinaryInferno 提示: {detail}"
     if symbol == "R" or "variable length" in lower:
-        return "payload", 0.68, f"official BinaryInferno hint: {detail}"
+        return "payload", 0.68, f"官方 BinaryInferno 提示: {detail}"
     if "sequence" in lower or "counter" in lower:
-        return "id", 0.66, f"official BinaryInferno hint: {detail}"
+        return "id", 0.66, f"官方 BinaryInferno 提示: {detail}"
     if symbol in {"I"}:
-        return "id", 0.62, f"official BinaryInferno hint: {detail}"
+        return "id", 0.62, f"官方 BinaryInferno 提示: {detail}"
     if symbol in {"C"}:
-        return "checksum", 0.7, f"official BinaryInferno hint: {detail}"
-    return "unknown", 0.38, f"official BinaryInferno hint: {detail}"
+        return "checksum", 0.7, f"官方 BinaryInferno 提示: {detail}"
+    return "unknown", 0.38, f"官方 BinaryInferno 提示: {detail}"
 
 
 def _binaryinferno_hints_useful(hints: list[tuple[str, str]]) -> bool:
@@ -785,7 +785,7 @@ class TsharkTool(CliToolBase):
                 success=False,
                 input_path=input_path,
                 output_path=str(output_path),
-                error="tshark not found in PATH",
+                error="PATH 中未找到 tshark",
             )
 
         command = ["tshark", "-r", input_path, "-q", "-z", "io,phs"]
@@ -808,7 +808,7 @@ class TsharkTool(CliToolBase):
             input_path=input_path,
             output_path=str(output_path),
             command_result=result,
-            error=result.stderr or "tshark command failed",
+            error=result.stderr or "tshark 命令执行失败",
         )
 
 
@@ -903,7 +903,7 @@ class NetzobTool(CliToolBase):
             input_path=input_path,
             output_path=str(output_path),
             command_result=result,
-            error=result.stderr or "netzob adapter execution failed",
+            error=result.stderr or "netzob 适配器执行失败",
         )
 
 
@@ -990,8 +990,8 @@ class NemesysTool(CliToolBase):
                 input_path=input_path,
                 output_path=str(output_path),
                 error=(
-                    "NEMESYS official mode requested but NEMESYS_HOME is not available. "
-                    "Set NEMESYS_HOME to repository root containing src/nemere."
+                    "已请求 NEMESYS official 模式，但 NEMESYS_HOME 不可用。"
+                    "请将 NEMESYS_HOME 设置为包含 src/nemere 的仓库根目录。"
                 ),
             )
 
@@ -1081,7 +1081,7 @@ class NemesysTool(CliToolBase):
             input_path=input_path,
             output_path=str(output_path),
             command_result=result,
-            error=result.stderr or "nemesys adapter execution failed",
+            error=result.stderr or "nemesys 适配器执行失败",
         )
 
 
@@ -1113,7 +1113,7 @@ class NetPlierAdapter(CliToolBase):
                 tool_name="netplier_adapter",
                 success=False,
                 input_path=input_path,
-                error="traffic_profile_path is required",
+                error="必须提供 traffic_profile_path",
             )
 
         output_path = Path(output_dir) / "netplier_semantic_raw.json"
@@ -1228,18 +1228,18 @@ class NetPlierAdapter(CliToolBase):
                     )
                     if mapped_candidates:
                         notes: list[str] = [
-                            f"official NetPlier command executed: {official_main}",
-                            f"official fields parsed: {len(official_fields)}",
+                            f"官方 NetPlier 命令已执行: {official_main}",
+                            f"官方字段解析数量: {len(official_fields)}",
                             (
-                                "official fields parse mode: "
+                                "官方字段解析模式: "
                                 f"{parse_meta.get('mode', 'unknown')} "
                                 f"(line_count={parse_meta.get('line_count', 0)}, "
                                 f"end_mode_count={parse_meta.get('end_mode_count', 0)}, "
                                 f"width_mode_count={parse_meta.get('width_mode_count', 0)})"
                             ),
-                            f"official timeout used: {official_timeout_sec}s",
-                            f"official protocol_type used: {protocol_type or 'auto-none'}",
-                            f"official layer used: {layer_attempt or 'default'} (attempt {attempt_index}/{len(layer_attempts)})",
+                            f"官方超时设置: {official_timeout_sec}s",
+                            f"官方 protocol_type: {protocol_type or 'auto-none'}",
+                            f"官方 layer: {layer_attempt or 'default'}（attempt {attempt_index}/{len(layer_attempts)}）",
                         ]
                         if official_attempt_notes:
                             notes.extend(official_attempt_notes)
@@ -1249,7 +1249,7 @@ class NetPlierAdapter(CliToolBase):
                             notes.extend(normalization_notes)
                         if official_result.return_code != 0:
                             notes.append(
-                                f"official NetPlier returned code {official_result.return_code}, but partial outputs were usable"
+                                f"官方 NetPlier 返回码 {official_result.return_code}，但部分输出仍可用"
                             )
                         payload = {
                             "tool_name": "netplier_adapter",
@@ -1270,25 +1270,25 @@ class NetPlierAdapter(CliToolBase):
 
                 if official_result.return_code == 0:
                     official_attempt_notes.append(
-                        f"attempt#{attempt_index} layer={layer_attempt or 'default'}: finished but missing/invalid fields info"
+                        f"attempt#{attempt_index} layer={layer_attempt or 'default'}: 已执行但字段信息缺失/无效"
                     )
                 else:
                     error_text = _compact_error_text(official_result.stderr) or (
-                        f"return code {official_result.return_code}"
+                        f"返回码 {official_result.return_code}"
                     )
                     official_attempt_notes.append(
-                        f"attempt#{attempt_index} layer={layer_attempt or 'default'} failed: {error_text}"
+                        f"attempt#{attempt_index} layer={layer_attempt or 'default'} 失败: {error_text}"
                     )
 
-            official_error = "official NetPlier did not produce usable fields; " + " | ".join(official_attempt_notes)
+            official_error = "官方 NetPlier 未产出可用字段；" + " | ".join(official_attempt_notes)
             if sample_note:
                 official_error = f"{official_error}; {sample_note}"
             if normalization_notes:
                 official_error = f"{official_error}; {' | '.join(normalization_notes)}"
         elif official_main and pcap_path and not Path(pcap_path).exists():
-            official_error = f"official NetPlier input pcap not found: {pcap_path}"
+            official_error = f"官方 NetPlier 输入 pcap 不存在: {pcap_path}"
         elif not official_main:
-            official_error = "official NetPlier entry script not found"
+            official_error = "未找到官方 NetPlier 入口脚本"
 
         script_path = Path(__file__).resolve().parents[1] / "adapters" / "netplier_cli.py"
         command = [
@@ -1314,7 +1314,7 @@ class NetPlierAdapter(CliToolBase):
             if not isinstance(notes, list):
                 notes = []
             if official_error:
-                notes.append(f"official NetPlier unavailable: {official_error}")
+                notes.append(f"官方 NetPlier 不可用: {official_error}")
                 payload["notes"] = notes
                 output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
             return ToolRunResult(
@@ -1326,9 +1326,9 @@ class NetPlierAdapter(CliToolBase):
                 data={**payload, "python_bin": python_bin, "official_main": official_main},
             )
 
-        merged_error = result.stderr or "netplier adapter execution failed"
+        merged_error = result.stderr or "netplier 适配器执行失败"
         if official_error:
-            merged_error = f"{merged_error}; official NetPlier detail: {official_error}"
+            merged_error = f"{merged_error}; 官方 NetPlier 详情: {official_error}"
         return ToolRunResult(
             tool_name="netplier_adapter",
             success=False,
@@ -1366,7 +1366,7 @@ class BinaryInfernoAdapter(CliToolBase):
                 tool_name="binaryinferno_adapter",
                 success=False,
                 input_path=input_path,
-                error="traffic_profile_path is required",
+                error="必须提供 traffic_profile_path",
             )
 
         output_path = Path(output_dir) / "binaryinferno_semantic_raw.json"
@@ -1477,20 +1477,20 @@ class BinaryInfernoAdapter(CliToolBase):
                         )
                         if mapped_candidates:
                             notes: list[str] = [
-                                f"official BinaryInferno command executed: {official_main}",
-                                f"official detectors used: {', '.join(detector_set)}",
-                                f"official attempt index: {attempt_index}/{len(detector_attempts)}",
-                                f"official messages used: {len(bounded_messages)}",
-                                f"official timeout used: {per_attempt_timeout}s per attempt (total budget {official_timeout_sec}s)",
+                                f"官方 BinaryInferno 命令已执行: {official_main}",
+                                f"官方 detectors: {', '.join(detector_set)}",
+                                f"官方 attempt 序号: {attempt_index}/{len(detector_attempts)}",
+                                f"官方使用消息数: {len(bounded_messages)}",
+                                f"官方超时设置: 每次 {per_attempt_timeout}s（总预算 {official_timeout_sec}s）",
                                 *attempts_notes,
                             ]
                             if not useful and accept_low_signal:
                                 notes.append(
-                                    "official hints were low-signal but accepted to preserve official pipeline output"
+                                    "官方提示信号较弱，但为保留官方链路输出仍予以接受"
                                 )
                             if official_result.return_code != 0:
                                 notes.append(
-                                    f"official BinaryInferno returned code {official_result.return_code}, but parsed hints were usable"
+                                    f"官方 BinaryInferno 返回码 {official_result.return_code}，但解析出的提示可用"
                                 )
                             payload = {
                                 "tool_name": "binaryinferno_adapter",
@@ -1510,20 +1510,20 @@ class BinaryInfernoAdapter(CliToolBase):
                             )
 
                 official_error = (
-                    "official BinaryInferno did not produce usable semantic mapping; "
+                    "官方 BinaryInferno 未产出可用语义映射；"
                     + " | ".join(attempts_notes)
                     + (
                         f"; command={official_main}; messages={len(bounded_messages)}; timeout={official_timeout_sec}s"
                     )
                 )
             else:
-                official_error = "official BinaryInferno skipped: no valid hex messages"
+                official_error = "官方 BinaryInferno 已跳过：没有有效十六进制消息"
         elif official_main and not Path(official_main).exists():
-            official_error = f"official BinaryInferno entry script not found: {official_main}"
+            official_error = f"未找到官方 BinaryInferno 入口脚本: {official_main}"
         elif not official_main:
-            official_error = "official BinaryInferno entry script not found"
+            official_error = "未找到官方 BinaryInferno 入口脚本"
         elif not sample_messages:
-            official_error = "official BinaryInferno skipped: no sample messages in traffic profile"
+            official_error = "官方 BinaryInferno 已跳过：traffic profile 中无样本消息"
 
         script_path = Path(__file__).resolve().parents[1] / "adapters" / "binaryinferno_cli.py"
 
@@ -1550,7 +1550,7 @@ class BinaryInfernoAdapter(CliToolBase):
             if not isinstance(notes, list):
                 notes = []
             if official_error:
-                notes.append(f"official BinaryInferno unavailable: {official_error}")
+                notes.append(f"官方 BinaryInferno 不可用: {official_error}")
                 payload["notes"] = notes
                 output_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
             return ToolRunResult(
@@ -1562,9 +1562,9 @@ class BinaryInfernoAdapter(CliToolBase):
                 data={**payload, "python_bin": python_bin, "official_main": official_main},
             )
 
-        merged_error = result.stderr or "binaryinferno adapter execution failed"
+        merged_error = result.stderr or "binaryinferno 适配器执行失败"
         if official_error:
-            merged_error = f"{merged_error}; official BinaryInferno detail: {official_error}"
+            merged_error = f"{merged_error}; 官方 BinaryInferno 详情: {official_error}"
         return ToolRunResult(
             tool_name="binaryinferno_adapter",
             success=False,
