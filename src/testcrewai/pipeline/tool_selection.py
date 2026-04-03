@@ -68,6 +68,7 @@ def _choose_semantic_primary(profile: TrafficProfile, protos: Set[str]) -> tuple
 
 class ToolSelectorAgentStage:
     def run(self, profile: TrafficProfile, output_dir: str, logger) -> ExecutionPlan:
+        # 选主工具 + 备份工具：默认单工具优先，失败再触发备份。
         if profile.capture_format in {"pcap", "pcapng"} and profile.packet_count == 0 and not profile.sample_messages_hex:
             plan = ExecutionPlan(
                 execution_mode="single",

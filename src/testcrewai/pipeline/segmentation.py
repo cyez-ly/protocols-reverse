@@ -158,6 +158,7 @@ def _segmentation_quality_issue(
     min_boundary_stability: float,
     min_coverage_ratio: float,
 ) -> tuple[bool, str]:
+    # 质量门控：用于判断是否需要启用备份分段工具。
     if not candidates:
         return True, "primary segmentation produced no candidates"
 
@@ -242,6 +243,7 @@ def _segmentation_quality_issue(
 
 
 class SegmentationAgentStage:
+    # 分段阶段：执行主分段工具，必要时回退到备份工具或内置 fallback。
     def __init__(
         self,
         netzob_tool: Optional[NetzobTool] = None,
@@ -262,6 +264,7 @@ class SegmentationAgentStage:
         nemesys_python_bin: str,
         logger,
     ) -> List[FieldBoundaryCandidate]:
+        # 输出统一结构：segment_candidates.json
         candidates: List[FieldBoundaryCandidate] = []
         tool_errors: List[str] = []
         runtime_info: Dict[str, str] = {}

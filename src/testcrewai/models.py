@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class ShellCommandResult(BaseModel):
+    """统一的子进程执行结果结构。"""
     command: List[str]
     return_code: int
     stdout: str = ""
@@ -18,6 +19,7 @@ class ShellCommandResult(BaseModel):
 
 
 class ToolRunResult(BaseModel):
+    """统一的工具调用结果结构。"""
     tool_name: str
     success: bool
     input_path: str
@@ -28,6 +30,7 @@ class ToolRunResult(BaseModel):
 
 
 class SessionFeature(BaseModel):
+    """单条会话的统计特征。"""
     session_id: str
     protocol: str
     packet_count: int
@@ -39,6 +42,7 @@ class SessionFeature(BaseModel):
 
 
 class MessageCluster(BaseModel):
+    """消息聚类描述（当前主要按长度聚类）。"""
     cluster_id: str
     basis: str = "length"
     sample_count: int
@@ -47,6 +51,7 @@ class MessageCluster(BaseModel):
 
 
 class TrafficProfile(BaseModel):
+    """预处理阶段输出：流量概览 + 特征 + 样本。"""
     input_file: str
     capture_format: Literal["pcap", "pcapng", "unknown"] = "unknown"
     packet_count: int = 0
@@ -67,6 +72,7 @@ class TrafficProfile(BaseModel):
 
 
 class ToolDecision(BaseModel):
+    """单个工具的选择决策。"""
     tool_name: str
     selected: bool = True
     mode: Literal["single", "parallel"] = "single"
@@ -75,6 +81,7 @@ class ToolDecision(BaseModel):
 
 
 class ExecutionPlan(BaseModel):
+    """工具执行计划（主工具 + 备份工具 + 理由）。"""
     execution_mode: Literal["single", "parallel"] = "parallel"
     decisions: List[ToolDecision] = Field(default_factory=list)
     selected_tools: List[str] = Field(default_factory=list)
@@ -83,6 +90,7 @@ class ExecutionPlan(BaseModel):
 
 
 class FieldBoundaryCandidate(BaseModel):
+    """字段边界候选。"""
     message_cluster: str
     start: int = Field(ge=0)
     end: int = Field(gt=0)
@@ -92,6 +100,7 @@ class FieldBoundaryCandidate(BaseModel):
 
 
 class FieldSemanticCandidate(BaseModel):
+    """字段语义候选。"""
     message_cluster: str
     field_range: str
     semantic_type: Literal[
@@ -110,6 +119,7 @@ class FieldSemanticCandidate(BaseModel):
 
 
 class EvidenceItem(BaseModel):
+    """融合阶段的证据条目。"""
     evidence_type: str
     source: str
     score: float = Field(ge=0.0, le=1.0)
@@ -117,6 +127,7 @@ class EvidenceItem(BaseModel):
 
 
 class ProtocolField(BaseModel):
+    """最终协议字段定义。"""
     message_cluster: str
     name: str
     start: int
@@ -127,6 +138,7 @@ class ProtocolField(BaseModel):
 
 
 class ProtocolSchema(BaseModel):
+    """最终融合得到的协议结构模板。"""
     input_file: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     message_clusters: List[MessageCluster] = Field(default_factory=list)
@@ -137,6 +149,7 @@ class ProtocolSchema(BaseModel):
 
 
 class AnalysisReport(BaseModel):
+    """报告阶段输出。"""
     title: str
     generated_at: datetime = Field(default_factory=datetime.utcnow)
     markdown: str
@@ -144,6 +157,7 @@ class AnalysisReport(BaseModel):
 
 
 class RunArtifacts(BaseModel):
+    """一次运行的产物路径索引。"""
     traffic_profile_path: Optional[Path] = None
     execution_plan_path: Optional[Path] = None
     segment_candidates_path: Optional[Path] = None
@@ -153,6 +167,7 @@ class RunArtifacts(BaseModel):
 
 
 class ProtocolReverseState(BaseModel):
+    """Flow 全局状态：贯穿各阶段的输入、产物与告警信息。"""
     id: str = Field(default_factory=lambda: str(uuid4()))
     pcap_path: str = ""
     output_dir: str = ""

@@ -10,8 +10,8 @@ from typing import Any, Dict
 
 from testcrewai.workflows.protocol_reverse_flow import ProtocolReverseFlow
 
-
 def _load_project_env() -> None:
+    """加载项目根目录 .env,供 CLI 默认参数读取。"""
     project_root = Path(__file__).resolve().parents[2]
     env_path = project_root / ".env"
     if not env_path.exists():
@@ -32,10 +32,10 @@ def _load_project_env() -> None:
             value = value.strip().strip('"').strip("'")
             os.environ.setdefault(key, value)
 
-
+# 提前加载环境变量：下面 parser 的默认值会依赖这些配置。
 _load_project_env()
 
-
+# 命令行参数定义
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="testcrewai",
@@ -83,6 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def execute(args: argparse.Namespace) -> Dict[str, Any]:
+    # 将 CLI 参数映射为 Flow 输入，并触发完整流程。
     flow = ProtocolReverseFlow()
     result = flow.kickoff(
         inputs={
@@ -101,6 +102,7 @@ def execute(args: argparse.Namespace) -> Dict[str, Any]:
 
 
 def run(argv: list[str] | None = None) -> Dict[str, Any]:
+    # 标准命令行入口。（命令行参数定义）
     parser = build_parser()
     args = parser.parse_args(argv)
     result = execute(args)
@@ -121,6 +123,7 @@ def run(argv: list[str] | None = None) -> Dict[str, Any]:
 
 
 def run_with_trigger() -> Dict[str, Any]:
+    # 触发器入口：从 argv[1] 读取 JSON 负载。
     if len(sys.argv) < 2:
         raise ValueError("No trigger payload provided")
 

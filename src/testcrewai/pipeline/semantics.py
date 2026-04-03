@@ -96,6 +96,7 @@ def _align_semantics_to_boundaries(
     semantic_candidates: List[FieldSemanticCandidate],
     boundaries: List[FieldBoundaryCandidate],
 ) -> tuple[List[FieldSemanticCandidate], int]:
+    # 语义边界对齐：减少“分段工具”和“语义工具”边界不一致带来的损耗。
     if not semantic_candidates or not boundaries:
         return semantic_candidates, 0
 
@@ -177,6 +178,7 @@ def _align_semantics_to_boundaries(
 
 
 class SemanticInferenceAgentStage:
+    # 语义阶段：先跑主语义工具；unknown 过高或过于单一时触发备份工具。
     def __init__(
         self,
         netplier_adapter: Optional[NetPlierAdapter] = None,
@@ -198,6 +200,7 @@ class SemanticInferenceAgentStage:
         binaryinferno_python_bin: str,
         logger,
     ) -> List[FieldSemanticCandidate]:
+        # 输出统一结构：semantic_candidates.json
         semantic_candidates: List[FieldSemanticCandidate] = []
         tool_errors: List[str] = []
         runtime_info: Dict[str, str] = {}

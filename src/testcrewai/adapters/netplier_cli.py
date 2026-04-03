@@ -15,6 +15,7 @@ from testcrewai.adapters.common import cluster_messages_by_length, printable_rat
 
 
 def score_length_field(messages: List[bytes], start: int, end: int) -> Tuple[float, str]:
+    # 长度字段打分：检查字段值是否与报文总长/剩余长度一致。
     if not messages or end - start > 4:
         return 0.0, "field too wide for length inference"
     checked = 0
@@ -33,6 +34,7 @@ def score_length_field(messages: List[bytes], start: int, end: int) -> Tuple[flo
 
 
 def score_type_field(messages: List[bytes], start: int, end: int) -> Tuple[float, str]:
+    # 类型字段打分：候选值越稳定（离散度低），越像 type。
     if not messages or end - start > 2:
         return 0.0, "field too wide for type inference"
     values = []
@@ -48,6 +50,7 @@ def score_type_field(messages: List[bytes], start: int, end: int) -> Tuple[float
 
 
 def score_payload_field(messages: List[bytes], start: int, end: int) -> Tuple[float, str]:
+    # 载荷字段打分：字段占比更大且可打印比例合理时，更偏向 payload。
     if not messages:
         return 0.0, "no samples"
     lengths = [len(msg) for msg in messages]
@@ -69,6 +72,7 @@ def score_payload_field(messages: List[bytes], start: int, end: int) -> Tuple[fl
 
 
 def main() -> None:
+    # 该脚本是 NetPlier 的本地降级语义路径（非官方 main.py）。
     parser = argparse.ArgumentParser(description="NetPlier-style semantic inference adapter")
     parser.add_argument("--segments", required=True, help="segment_candidates.json path")
     parser.add_argument("--profile", required=True, help="traffic_profile.json path")
@@ -93,6 +97,7 @@ def main() -> None:
     semantic_results: List[Dict[str, Any]] = []
 
     for cluster_id, cluster_candidates in by_cluster.items():
+        # 逐 cluster 推断语义，避免不同长度消息相互污染。
         candidates_messages = cluster_messages.get(cluster_id, messages)
         for candidate in cluster_candidates:
             start = int(candidate["start"])
@@ -107,6 +112,7 @@ def main() -> None:
                 ("type", type_score, type_reason),
                 ("payload", payload_score, payload_reason),
             ]
+            # 选择得分最高的语义；低分统一降为 unknown。
             semantic_type, confidence, reason = max(options, key=lambda item: item[1])
 
             if confidence < 0.45:

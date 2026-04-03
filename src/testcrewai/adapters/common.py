@@ -6,6 +6,7 @@ from typing import Dict, Iterable, List, Sequence, Tuple
 
 
 def shannon_entropy(values: Sequence[int]) -> float:
+    # 计算离散序列的信息熵。
     if not values:
         return 0.0
     counts: Dict[int, int] = {}
@@ -20,6 +21,7 @@ def shannon_entropy(values: Sequence[int]) -> float:
 
 
 def printable_ratio(payload: bytes) -> float:
+    # 统计可打印字符比例，用于区分文本/二进制倾向。
     if not payload:
         return 0.0
     printable = 0
@@ -39,6 +41,7 @@ def parse_range(field_range: str) -> Tuple[int, int]:
 
 
 def cluster_messages_by_length(messages: List[bytes], min_cluster_size: int = 2) -> Dict[str, List[bytes]]:
+    # 以消息长度聚类（原型阶段的轻量分群方式）。
     buckets: Dict[int, List[bytes]] = defaultdict(list)
     for message in messages:
         buckets[len(message)].append(message)
@@ -56,6 +59,7 @@ def cluster_messages_by_length(messages: List[bytes], min_cluster_size: int = 2)
 
 
 def non_overlapping_ranges(ranges: Iterable[Tuple[int, int, float]]) -> List[Tuple[int, int, float]]:
+    # 按分数贪心选择互不重叠区间，用于融合阶段边界裁决。
     ordered = sorted(ranges, key=lambda item: (-item[2], item[1] - item[0]))
     selected: List[Tuple[int, int, float]] = []
 

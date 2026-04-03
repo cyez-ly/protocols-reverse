@@ -13,6 +13,7 @@ from testcrewai.utils.io import read_json
 
 
 def _normalize_python_bin(value: str) -> str:
+    # 兼容两种写法：既支持 /path/to/venv，也支持 /path/to/venv/bin/python。
     candidate = value.strip()
     if not candidate:
         return "python3"
@@ -48,6 +49,7 @@ def _resolve_python_bin(
     direct_key: str,
     env_keys: list[str],
 ) -> str:
+    # 解释器优先级：函数参数 > 环境变量 > 全局 python_bin。
     value = extra_args.get(direct_key, "")
     if value:
         return _normalize_python_bin(value)
@@ -61,6 +63,7 @@ def _resolve_python_bin(
 
 
 def _build_tool_env(extra_python_paths: Optional[list[str]] = None) -> Dict[str, str]:
+    # 为子进程构建 PYTHONPATH，确保工具脚本能导入项目与外部仓库模块。
     env = os.environ.copy()
     project_src = Path(__file__).resolve().parents[2]  # .../project/src
     path_items: list[str] = [str(project_src)]
@@ -177,6 +180,7 @@ def _normalize_capture_for_official(
     timeout_sec: int,
     prefix: str,
 ) -> tuple[str, list[str]]:
+    # 官方工具通常更偏好标准 pcap，这里先做一次归一化。
     notes: list[str] = []
     profile_file = Path(profile_path)
     if not profile_file.exists():
@@ -810,6 +814,7 @@ class TsharkTool(CliToolBase):
 
 class NetzobTool(CliToolBase):
     def run(self, input_path: str, output_dir: str, extra_args: Optional[Dict[str, str]] = None) -> ToolRunResult:
+        # 通过独立适配脚本执行：内部采用“官方优先，失败降级”策略。
         extra_args = extra_args or {}
         timeout_sec = int(extra_args.get("timeout_sec", 90))
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -904,6 +909,7 @@ class NetzobTool(CliToolBase):
 
 class NemesysTool(CliToolBase):
     def run(self, input_path: str, output_dir: str, extra_args: Optional[Dict[str, str]] = None) -> ToolRunResult:
+        # 通过独立适配脚本执行：支持 official/heuristic/auto 三种模式。
         extra_args = extra_args or {}
         timeout_sec = int(extra_args.get("timeout_sec", 90))
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1081,6 +1087,7 @@ class NemesysTool(CliToolBase):
 
 class NetPlierAdapter(CliToolBase):
     def run(self, input_path: str, output_dir: str, extra_args: Optional[Dict[str, str]] = None) -> ToolRunResult:
+        # 先尝试 NetPlier 官方入口，失败后回退到本地语义适配脚本。
         extra_args = extra_args or {}
         timeout_sec = int(extra_args.get("timeout_sec", 90))
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1334,6 +1341,7 @@ class NetPlierAdapter(CliToolBase):
 
 class BinaryInfernoAdapter(CliToolBase):
     def run(self, input_path: str, output_dir: str, extra_args: Optional[Dict[str, str]] = None) -> ToolRunResult:
+        # 先尝试 BinaryInferno 官方 blackboard，再回退到本地规则语义。
         extra_args = extra_args or {}
         timeout_sec = int(extra_args.get("timeout_sec", 90))
         Path(output_dir).mkdir(parents=True, exist_ok=True)

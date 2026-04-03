@@ -47,6 +47,7 @@ def _format_schema_table(schema: ProtocolSchema) -> str:
 
 
 class ReportAgentStage:
+    # 报告阶段：把各阶段中间结果整理成答辩友好的 Markdown 报告。
     def run(
         self,
         profile: TrafficProfile,

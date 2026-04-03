@@ -18,6 +18,7 @@ from testcrewai.utils.io import write_json
 
 
 TOOL_RELIABILITY = {
+    # 融合时的工具基础可信度（可按实验调参）。
     "netzob_adapter": 0.88,
     "nemesys_adapter": 0.82,
     "fallback_segmenter": 0.55,
@@ -117,6 +118,7 @@ def _semantic_weight(
 
 
 class FusionAgentStage:
+    # 融合阶段：将边界证据 + 语义证据整合为 final_schema.json
     def run(
         self,
         profile: TrafficProfile,

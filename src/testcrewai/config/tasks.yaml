@@ -1,3 +1,9 @@
+# 任务配置：
+# - description: 要做什么
+# - expected_output: 输出标准
+# - agent: 由哪个智能体执行
+
+# 1) 预处理任务
 preprocess_task:
   description: >
     Read unknown traffic capture {pcap_path}, extract deterministic traffic features,
@@ -7,6 +13,7 @@ preprocess_task:
     printable ratio, and protocol style classification.
   agent: preprocess_agent
 
+# 2) 工具选择任务
 tool_selection_task:
   description: >
     Select protocol reverse tools and execution mode based on the traffic profile,
@@ -15,6 +22,7 @@ tool_selection_task:
     A tool execution plan containing selected tools, mode, confidence, and rationale.
   agent: tool_selector_agent
 
+# 3) 字段分段任务
 segmentation_task:
   description: >
     Generate field boundary candidates from sampled messages and clusters.
@@ -22,6 +30,7 @@ segmentation_task:
     Candidate field ranges with confidence, source tool, and explainable reasons.
   agent: segmentation_agent
 
+# 4) 语义推断任务
 semantic_inference_task:
   description: >
     Infer likely semantics for candidate fields and provide confidence scores.
@@ -29,6 +38,7 @@ semantic_inference_task:
     Semantic candidates for type, length, timestamp, id, payload, and checksum.
   agent: semantic_inference_agent
 
+# 5) 融合任务
 fusion_task:
   description: >
     Fuse segmentation and semantic evidence into a final protocol schema.
@@ -37,6 +47,7 @@ fusion_task:
     global confidence.
   agent: fusion_agent
 
+# 6) 报告任务
 report_task:
   description: >
     Summarize the whole reverse process and create a markdown report.

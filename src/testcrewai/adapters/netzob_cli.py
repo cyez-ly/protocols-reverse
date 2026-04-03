@@ -14,6 +14,7 @@ from testcrewai.adapters.common import cluster_messages_by_length, printable_rat
 
 
 def build_candidates(messages: List[bytes]) -> List[Dict[str, Any]]:
+    # 启发式分段：基于“按字节位熵变化”寻找候选边界。
     if not messages:
         return []
 
@@ -76,6 +77,7 @@ def _to_bytes(value: Any) -> bytes:
 
 
 def _cluster_id_by_length(profile: Dict[str, Any], message_len: int) -> Optional[str]:
+    # 先精确匹配长度，再做近邻匹配，尽量与预处理 cluster 对齐。
     clusters = profile.get("message_clusters", [])
     # 1) Exact representative length match.
     for item in clusters:
@@ -170,6 +172,7 @@ def _symbol_messages(symbol: Any) -> List[bytes]:
 
 
 def _collect_text_delimiter_support(messages: List[bytes]) -> Dict[int, float]:
+    # 文本协议增强：统计 CRLF / header-body 分隔符在位置上的支持度。
     if not messages:
         return {}
     min_len = min(len(msg) for msg in messages)
@@ -220,6 +223,7 @@ def _refine_text_symbol_candidates(
     symbol_candidates: List[Dict[str, Any]],
     messages: List[bytes],
 ) -> Tuple[List[Dict[str, Any]], int]:
+    # 对文本流量做“微碎片合并”，提升边界可解释性。
     if not symbol_candidates or not messages:
         return symbol_candidates, 0
 
@@ -330,6 +334,7 @@ def _field_candidates_from_symbol(symbol: Any, messages: List[bytes]) -> List[Di
 
 
 def _build_official_candidates(profile: Dict[str, Any], import_layer: int) -> Tuple[List[Dict[str, Any]], List[str]]:
+    # 官方路径：调用 Netzob API（PCAPImporter + Format.clusterBySize）。
     from netzob.all import Format, PCAPImporter  # type: ignore
 
     input_file = str(profile.get("input_file", "")).strip()
@@ -434,6 +439,7 @@ def _build_official_candidates(profile: Dict[str, Any], import_layer: int) -> Tu
 
 
 def _build_heuristic_candidates(profile: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    # 降级路径：仅基于样本消息做熵分段。
     hex_messages = profile.get("sample_messages_hex", [])
     messages: List[bytes] = []
     for raw_hex in hex_messages:
@@ -461,6 +467,7 @@ def _build_heuristic_candidates(profile: Dict[str, Any]) -> Tuple[List[Dict[str,
 
 
 def main() -> None:
+    # 适配器入口：auto=官方优先失败降级，official=仅官方，heuristic=仅启发式。
     parser = argparse.ArgumentParser(description="Heuristic Netzob-compatible segmentation adapter")
     parser.add_argument("--input", required=True, help="traffic_profile.json path")
     parser.add_argument("--output", required=True, help="output json path")

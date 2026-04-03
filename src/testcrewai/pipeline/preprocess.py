@@ -415,10 +415,12 @@ def _downselect_payloads_for_reverse(
 
 
 class PreprocessAgentStage:
+    # 预处理阶段：抽取 payload、统计特征并生成 traffic_profile.json
     def __init__(self, tshark_tool: Optional[TsharkTool] = None) -> None:
         self.tshark_tool = tshark_tool or TsharkTool()
 
     def run(self, pcap_path: str, output_dir: str, timeout_sec: int, python_bin: str, logger) -> TrafficProfile:
+        # 输入可以是 pcap/pcapng；若工具缺失会自动走降级路径。
         input_path = Path(pcap_path)
         extension_format = _detect_extension_format(input_path)
         magic_format = _detect_capture_format_from_magic(input_path)

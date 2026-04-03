@@ -8,7 +8,7 @@ import sys
 
 
 def _patch_netzob_impactpacket() -> str:
-    """Patch missing ImpactPacket.ARP for some Netzob builds used by NetPlier."""
+    """为部分 Netzob 版本补齐 ImpactPacket.ARP，提升 NetPlier 官方路径兼容性。"""
     try:
         from netzob.Import.PCAPImporter import ImpactPacket  # type: ignore
     except Exception as exc:
@@ -34,6 +34,7 @@ def _patch_netzob_impactpacket() -> str:
 
 
 def main() -> int:
+    # 兼容启动器：在当前进程中运行官方 NetPlier main.py，并做最小补丁。
     parser = argparse.ArgumentParser(
         description="Compatibility launcher for NetPlier official main.py"
     )
@@ -57,6 +58,7 @@ def main() -> int:
     old_cwd = Path.cwd()
     old_path = list(sys.path)
     try:
+        # 切换工作目录与 argv，模拟“直接运行官方脚本”的执行环境。
         os.chdir(str(main_path.parent))
         sys.path.insert(0, str(main_path.parent))
         sys.argv = [str(main_path), *passthrough]

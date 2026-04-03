@@ -15,6 +15,7 @@ from testcrewai.adapters.common import cluster_messages_by_length, shannon_entro
 
 
 def _cluster_id_by_length(profile: Dict[str, Any], message_len: int) -> str:
+    # 将 NEMESYS 分段结果映射回预处理 cluster，减少后续融合错位。
     clusters = profile.get("message_clusters", [])
     for item in clusters:
         lengths = item.get("representative_lengths", [])
@@ -67,6 +68,7 @@ def _cluster_id_by_length(profile: Dict[str, Any], message_len: int) -> str:
 
 
 def _entropy_boundaries(messages: List[bytes]) -> List[Dict[str, Any]]:
+    # 启发式分段（降级）：按列熵差构造边界。
     if not messages:
         return []
     min_len = min(len(msg) for msg in messages)
@@ -120,6 +122,7 @@ def _build_official_candidates(
     consensus_max_fields: int,
     enable_consensus: bool,
 ) -> Tuple[List[Dict[str, Any]], List[str]]:
+    # 官方路径：SpecimenLoader + bcDeltaGaussMessageSegmentation。
     input_file = str(profile.get("input_file", "")).strip()
     if not input_file:
         raise ValueError("traffic_profile.input_file is empty")
@@ -138,6 +141,7 @@ def _build_official_candidates(
     from nemere.utils.loader import SpecimenLoader  # type: ignore
 
     attempts: List[Tuple[int, bool]] = []
+    # 自动尝试多组 layer / relative_to_ip，提升官方路径稳定性。
     for candidate_layer in [layer, *layer_candidates]:
         if candidate_layer <= 0:
             continue
@@ -242,6 +246,7 @@ def _build_official_candidates(
         total_messages: int,
         max_length: int,
     ) -> List[Tuple[int, int, float]]:
+        # 共识压缩：抑制过分段，把每条消息的小波动过滤掉。
         if total_messages <= 0 or max_length <= 0:
             return []
 
@@ -375,6 +380,7 @@ def _build_official_candidates(
 
 
 def _build_heuristic_candidates(profile: Dict[str, Any]) -> Tuple[List[Dict[str, Any]], List[str]]:
+    # 降级路径：使用本地熵分段生成候选边界。
     hex_messages = profile.get("sample_messages_hex", [])
     messages: List[bytes] = []
     for raw_hex in hex_messages:
@@ -407,6 +413,7 @@ def _build_heuristic_candidates(profile: Dict[str, Any]) -> Tuple[List[Dict[str,
 
 
 def main() -> None:
+    # 适配器入口：auto=官方优先失败降级，official=仅官方，heuristic=仅启发式。
     parser = argparse.ArgumentParser(description="NEMESYS segmentation adapter")
     parser.add_argument("--input", required=True, help="traffic_profile.json path")
     parser.add_argument("--output", required=True, help="output json path")
