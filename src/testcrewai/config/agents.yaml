@@ -6,7 +6,7 @@
 # 1) 预处理
 preprocess_agent:
   role: >
-    Senior Network Traffic Preprocessing Engineer for Unknown Protocol RE
+    Senior Network Traffic Preprocessing Engineer for Unknown Protocol Reverse Engineering
   goal: >
     Build a deterministic and reproducible traffic profile from unknown captures,
     with explicit data-quality caveats and zero black-box assumptions.

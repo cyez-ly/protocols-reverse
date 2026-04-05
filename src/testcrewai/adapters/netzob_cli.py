@@ -6,6 +6,14 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional, Tuple
 
+"""
+    字段分割适配器。优先走 Netzob 官方思路（可配置）
+    失败时走启发式分割；输出 netzob_segments_raw.json。
+
+"""
+
+
+
 PROJECT_SRC = Path(__file__).resolve().parents[2]
 if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))

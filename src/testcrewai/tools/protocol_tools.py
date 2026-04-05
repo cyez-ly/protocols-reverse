@@ -29,7 +29,7 @@ def _normalize_python_bin(value: str) -> str:
 
 
 def _validate_python_bin(python_bin: str) -> str | None:
-    # Command names like "python3" are validated by subprocess/PATH lookup.
+    # 像 "python3" 这种命令名由 subprocess 通过 PATH 解析即可。
     if "/" not in python_bin and not python_bin.startswith("."):
         return None
 
@@ -65,7 +65,7 @@ def _resolve_python_bin(
 def _build_tool_env(extra_python_paths: Optional[list[str]] = None) -> Dict[str, str]:
     # 为子进程构建 PYTHONPATH，确保工具脚本能导入项目与外部仓库模块。
     env = os.environ.copy()
-    project_src = Path(__file__).resolve().parents[2]  # .../project/src
+    project_src = Path(__file__).resolve().parents[2]  # 项目的 src 目录
     path_items: list[str] = [str(project_src)]
     for item in extra_python_paths or []:
         candidate = str(Path(item).expanduser())
@@ -156,7 +156,7 @@ def _detect_netplier_protocol_type(profile_payload: Dict[str, Any]) -> str:
     if not isinstance(raw_protocols, list):
         return ""
     normalized = {str(item).strip().lower() for item in raw_protocols if str(item).strip()}
-    # NetPlier supports a fixed protocol list. Infer conservatively when obvious.
+    # 该工具仅支持少数协议类型，这里做保守推断，避免误判。
     if "dhcp" in normalized or ("udp" in normalized and "dhcp" in normalized):
         return "dhcp"
     if "icmp" in normalized:
@@ -204,6 +204,7 @@ def _normalize_capture_for_official(
     target_capture = Path(output_dir) / f"{prefix}_official_input_normalized.pcap"
     converted = False
 
+    # 优先用 editcap 转为标准 pcap；若不可用或失败，再尝试 tshark 重写。
     if shutil.which("editcap"):
         convert_cmd = ["editcap", "-F", "pcap", str(source_path), str(target_capture)]
         convert_res = runner.run(convert_cmd, timeout_sec=max(20, min(timeout_sec, 120)))
@@ -340,9 +341,9 @@ def _parse_netplier_fields_info_with_meta(
     end_count = len(end_mode_fields)
     width_count = len(width_mode_fields)
 
-    # NetPlier's msa_fields_info.txt varies across versions.
-    # Some builds encode cumulative end-bits, others encode per-field width-bits.
-    # We auto-detect to avoid collapsing hundreds of lines into only a few fields.
+    # 该工具的 msa_fields_info.txt 在不同版本中含义可能不同：
+    # 有些版本存“累计结束位”，有些版本存“每字段位宽”。
+    # 这里自动判别，避免把大量字段错误压缩成少数字段。
     if end_count >= max(8, int(line_count * 0.75)):
         selected = end_mode_fields
         mode = "end_bits"
@@ -401,6 +402,7 @@ def _map_official_fields_to_segments(
             continue
 
         segment_len = max(1, end - start)
+        # 核心思路：按“重叠长度 × 语义基础置信度”进行投票，再选最高分语义。
         total_overlap = 0
         semantic_votes: dict[str, float] = {}
         semantic_reasons: dict[str, list[str]] = {}
@@ -739,7 +741,7 @@ def _map_binaryinferno_hints_to_segments(
             elif total_segments <= hint_count:
                 hint_index = min(index, hint_count - 1)
             else:
-                # Spread a smaller hint set across larger segment set.
+                # 当提示数少于分段数时，按比例把提示均匀映射到各分段。
                 hint_index = min(hint_count - 1, int(index * hint_count / max(1, total_segments)))
             symbol, detail = hints[hint_index]
             semantic_type, confidence, reason = _semantic_from_binaryinferno_hint(symbol, detail)
@@ -788,7 +790,10 @@ class TsharkTool(CliToolBase):
                 error="PATH 中未找到 tshark",
             )
 
+        # 拼装command
         command = ["tshark", "-r", input_path, "-q", "-z", "io,phs"]
+        
+        # 调用shellrunner的run
         result = self.runner.run(command, timeout_sec=timeout_sec)
 
         if result.return_code == 0:
@@ -858,6 +863,7 @@ class NetzobTool(CliToolBase):
                 prefix="netzob",
             )
 
+        # 拼装command
         command = [
             python_bin,
             str(script_path),
@@ -872,6 +878,8 @@ class NetzobTool(CliToolBase):
             "--import-layer-candidates",
             netzob_import_layer_candidates,
         ]
+
+        # 调用shellrunner的run方法
         result = self.runner.run(
             command,
             timeout_sec=timeout_sec,
@@ -909,7 +917,7 @@ class NetzobTool(CliToolBase):
 
 class NemesysTool(CliToolBase):
     def run(self, input_path: str, output_dir: str, extra_args: Optional[Dict[str, str]] = None) -> ToolRunResult:
-        # 通过独立适配脚本执行：支持 official/heuristic/auto 三种模式。
+        # 通过独立适配脚本执行：支持官方、启发式、自动三种模式（official/heuristic/auto）。
         extra_args = extra_args or {}
         timeout_sec = int(extra_args.get("timeout_sec", 90))
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -995,6 +1003,7 @@ class NemesysTool(CliToolBase):
                 ),
             )
 
+        # 拼装command
         command = [
             python_bin,
             str(script_path),
@@ -1046,6 +1055,8 @@ class NemesysTool(CliToolBase):
         extra_python_paths: list[str] = []
         if nemesys_home:
             extra_python_paths.append(str(Path(nemesys_home) / "src"))
+        
+        # 调用shellrunner的run方法
         result = self.runner.run(
             command,
             timeout_sec=timeout_sec,
@@ -1087,7 +1098,7 @@ class NemesysTool(CliToolBase):
 
 class NetPlierAdapter(CliToolBase):
     def run(self, input_path: str, output_dir: str, extra_args: Optional[Dict[str, str]] = None) -> ToolRunResult:
-        # 先尝试 NetPlier 官方入口，失败后回退到本地语义适配脚本。
+        # 优先尝试 NetPlier 官方入口；失败后回退到本地语义适配脚本。
         extra_args = extra_args or {}
         timeout_sec = int(extra_args.get("timeout_sec", 90))
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1291,6 +1302,8 @@ class NetPlierAdapter(CliToolBase):
             official_error = "未找到官方 NetPlier 入口脚本"
 
         script_path = Path(__file__).resolve().parents[1] / "adapters" / "netplier_cli.py"
+        
+        # 拼装command
         command = [
             python_bin,
             str(script_path),
@@ -1341,7 +1354,7 @@ class NetPlierAdapter(CliToolBase):
 
 class BinaryInfernoAdapter(CliToolBase):
     def run(self, input_path: str, output_dir: str, extra_args: Optional[Dict[str, str]] = None) -> ToolRunResult:
-        # 先尝试 BinaryInferno 官方 blackboard，再回退到本地规则语义。
+        # 优先尝试 BinaryInferno 官方 blackboard；失败后回退到本地规则语义。
         extra_args = extra_args or {}
         timeout_sec = int(extra_args.get("timeout_sec", 90))
         Path(output_dir).mkdir(parents=True, exist_ok=True)
@@ -1527,6 +1540,7 @@ class BinaryInfernoAdapter(CliToolBase):
 
         script_path = Path(__file__).resolve().parents[1] / "adapters" / "binaryinferno_cli.py"
 
+        # 拼装command
         command = [
             python_bin,
             str(script_path),

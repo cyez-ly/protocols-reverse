@@ -118,7 +118,7 @@ def _semantic_weight(
 
 
 class FusionAgentStage:
-    # 融合阶段：将边界证据 + 语义证据整合为 final_schema.json
+    # 融合阶段：将边界证据 + 语义证据整合为最终结构文件。
     def run(
         self,
         profile: TrafficProfile,
@@ -183,6 +183,7 @@ class FusionAgentStage:
                 score = sum(scores) / max(1, len(scores))
                 scored_ranges.append((start, end, score))
 
+            # 先做“边界层”的非重叠选择，得到每个消息簇的主干字段范围。
             selected_ranges = non_overlapping_ranges(scored_ranges)
             total_ranges = max(1, len(selected_ranges))
             for idx, (start, end, boundary_score) in enumerate(selected_ranges, start=1):
@@ -209,7 +210,7 @@ class FusionAgentStage:
                             source_totals=source_totals,
                         )
 
-                        # Structural prior: prevent large tail fields from being trivially labeled as `type`.
+                        # 结构先验：避免大尾段被轻易标成类型字段，鼓励更符合协议常识的标签。
                         if (
                             candidate.semantic_type == "type"
                             and idx >= total_ranges - 1
@@ -297,6 +298,7 @@ class FusionAgentStage:
                             )
 
                 final_confidence = max(0.0, min(1.0, boundary_score * 0.6 + semantic_score * 0.4))
+                # 最终置信度由“边界证据 + 语义证据”加权合成。
                 fields.append(
                     ProtocolField(
                         message_cluster=cluster_id,

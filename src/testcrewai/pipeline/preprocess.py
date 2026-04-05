@@ -56,7 +56,7 @@ def _detect_capture_format_from_magic(file_path: Path) -> str:
 
 
 def _detect_capture_format(file_path: Path) -> str:
-    # Prefer magic header over suffix because many sample files are mislabeled.
+    # 优先根据文件头判定格式；很多样本文件后缀名并不可靠。
     magic_format = _detect_capture_format_from_magic(file_path)
     if magic_format != "unknown":
         return magic_format
@@ -105,8 +105,8 @@ def _extract_messages_with_scapy(file_path: Path, max_samples: int = 300) -> Tup
     for pkt in packets:
         payload = b""
 
-        # Prefer explicit Raw bytes first, but keep protocol-layer fallbacks for
-        # DHCP/BOOTP-like traffic where Raw is often absent in dissection.
+        # 优先拿显式原始负载；若没有原始层，再回退到传输层负载。
+        # DHCP/BOOTP 这类流量常见“有业务数据但无原始层”的情况。
         if pkt.haslayer(Raw):
             payload = bytes(pkt[Raw])
         elif pkt.haslayer(UDP):
@@ -193,7 +193,7 @@ _HEX_ONLY_RE = re.compile(r"^[0-9a-fA-F]+$")
 
 
 def _looks_like_dns_payload(payload: bytes) -> bool:
-    # RFC 1035 DNS header is 12 bytes.
+    # 根据 DNS 协议标准，报头固定 12 字节，短于该长度可直接排除。
     if len(payload) < 12:
         return False
 
@@ -214,7 +214,7 @@ def _looks_like_dns_payload(payload: bytes) -> bool:
     if qdcount > 20:
         return False
 
-    # Light sanity check for query name encoding when qdcount > 0.
+    # 当存在查询问题区时，对域名编码做轻量合理性检查，降低误判率。
     if qdcount > 0 and len(payload) > 13:
         index = 12
         label_budget = 0
@@ -415,12 +415,12 @@ def _downselect_payloads_for_reverse(
 
 
 class PreprocessAgentStage:
-    # 预处理阶段：抽取 payload、统计特征并生成 traffic_profile.json
+    # 预处理阶段：抽取报文负载、统计特征并生成流量画像文件。
     def __init__(self, tshark_tool: Optional[TsharkTool] = None) -> None:
         self.tshark_tool = tshark_tool or TsharkTool()
 
     def run(self, pcap_path: str, output_dir: str, timeout_sec: int, python_bin: str, logger) -> TrafficProfile:
-        # 输入可以是 pcap/pcapng；若工具缺失会自动走降级路径。
+        # 输入可以是 pcap/pcapng；若工具缺失会自动走兜底路径。
         input_path = Path(pcap_path)
         extension_format = _detect_extension_format(input_path)
         magic_format = _detect_capture_format_from_magic(input_path)
@@ -467,6 +467,7 @@ class PreprocessAgentStage:
         else:
             profile.notes.append(f"tshark 不可用或执行失败: {tshark_result.error}")
 
+        # 主路径：scapy 提取消息与会话；若失败则由后续 tshark 兜底。
         payloads, session_features, protocols, parse_notes = _extract_messages_with_scapy(input_path)
         profile.notes.extend(parse_notes)
         profile.session_features = session_features
@@ -481,6 +482,7 @@ class PreprocessAgentStage:
             protocols[name] = protocols.get(name, 0) + count
 
         if not payloads:
+            # 兜底路径：按字段提取业务数据十六进制并反解为字节样本。
             tshark_payloads, tshark_notes = _extract_messages_with_tshark(
                 input_path,
                 timeout_sec=timeout_sec,
@@ -497,11 +499,13 @@ class PreprocessAgentStage:
 
         if not payloads:
             if is_capture_format:
+                # 真实抓包但提取不到消息，直接记为错误，供后续阶段降级处理。
                 profile.protocol_style = "unknown"
                 profile.errors.append(
                     "未从抓包中提取到可解析数据包。请检查文件完整性以及 tshark/scapy 是否可用。"
                 )
             else:
+                # 非抓包输入时，允许按文件字节窗口构造“伪消息”保持流程可运行。
                 raw = input_path.read_bytes() if input_path.exists() else b""
                 if raw:
                     window = raw[:4096]
@@ -519,6 +523,7 @@ class PreprocessAgentStage:
                 else:
                     profile.errors.append("抓包文件为空或读取失败")
         else:
+            # 为逆向稳定性做降采样，优先保留主长度簇，减少噪声长度干扰。
             payloads, downselect_notes = _downselect_payloads_for_reverse(payloads)
             profile.notes.extend(downselect_notes)
 

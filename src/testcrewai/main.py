@@ -10,8 +10,9 @@ from typing import Any, Dict
 
 from testcrewai.workflows.protocol_reverse_flow import ProtocolReverseFlow
 
+# 加载环境变量
 def _load_project_env() -> None:
-    """加载项目根目录 .env,供 CLI 默认参数读取。"""
+    """加载项目根目录/.env,供 CLI 默认参数读取。"""
     project_root = Path(__file__).resolve().parents[2]
     env_path = project_root / ".env"
     if not env_path.exists():
@@ -81,9 +82,9 @@ def build_parser() -> argparse.ArgumentParser:
     )
     return parser
 
-
+# 执行
 def execute(args: argparse.Namespace) -> Dict[str, Any]:
-    # 将 CLI 参数映射为 Flow 输入，并触发完整流程。
+    # 将 CLI 参数映射为 Flow 输入，并触发完整流程，flow=protocol_reverse_flow.py中的类ProtocolReverseFlow。
     flow = ProtocolReverseFlow()
     result = flow.kickoff(
         inputs={
@@ -104,7 +105,7 @@ def execute(args: argparse.Namespace) -> Dict[str, Any]:
 def run(argv: list[str] | None = None) -> Dict[str, Any]:
     # 标准命令行入口。（命令行参数定义）
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(argv) # 读取命令行参数
     result = execute(args)
 
     if args.print_json:
@@ -122,6 +123,7 @@ def run(argv: list[str] | None = None) -> Dict[str, Any]:
     return result
 
 
+# 供其他程序调用的接口，例如：python main.py '{"pcap":"a.pcap", "output":"out"}'
 def run_with_trigger() -> Dict[str, Any]:
     # 触发器入口：从 argv[1] 读取 JSON 负载。
     if len(sys.argv) < 2:
@@ -149,11 +151,11 @@ def run_with_trigger() -> Dict[str, Any]:
 
 
 def train() -> None:
-    raise NotImplementedError("当前原型聚焦 CLI 逆向流程，暂未实现 train 命令。")
+    raise NotImplementedError("暂未实现 train 命令。")
 
 
 def replay() -> None:
-    raise NotImplementedError("当前 Flow 原型暂未实现 replay。")
+    raise NotImplementedError("当前原型暂未实现 replay。")
 
 
 def test() -> None:

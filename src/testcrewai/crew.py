@@ -26,17 +26,17 @@ class ProtocolReverseCrew:
     def preprocess_agent(self) -> Agent:
         # 预处理智能体：负责流量特征抽取解释。
         return Agent(
-            config=self.agents_config["preprocess_agent"],  # type: ignore[index]
+            config=self.agents_config["preprocess_agent"], 
             llm=self._model_name(),
             reasoning=False,
-            verbose=True,
+            verbose=True,  # 执行期间日志的详细程度，默认为false
         )
 
     @agent
     def tool_selector_agent(self) -> Agent:
         # 工具选择智能体：根据特征选择主工具与备份工具。
         return Agent(
-            config=self.agents_config["tool_selector_agent"],  # type: ignore[index]
+            config=self.agents_config["tool_selector_agent"], 
             llm=self._model_name(),
             reasoning=False,
             verbose=True,
@@ -46,7 +46,7 @@ class ProtocolReverseCrew:
     def segmentation_agent(self) -> Agent:
         # 分段智能体：关注字段边界候选质量。
         return Agent(
-            config=self.agents_config["segmentation_agent"],  # type: ignore[index]
+            config=self.agents_config["segmentation_agent"], 
             llm=self._model_name(),
             reasoning=False,
             verbose=True,
@@ -56,7 +56,7 @@ class ProtocolReverseCrew:
     def semantic_inference_agent(self) -> Agent:
         # 语义智能体：给字段打语义标签并说明依据。
         return Agent(
-            config=self.agents_config["semantic_inference_agent"],  # type: ignore[index]
+            config=self.agents_config["semantic_inference_agent"], 
             llm=self._model_name(),
             reasoning=False,
             verbose=True,
@@ -66,7 +66,7 @@ class ProtocolReverseCrew:
     def fusion_agent(self) -> Agent:
         # 融合智能体：做冲突裁决与最终结构整合。
         return Agent(
-            config=self.agents_config["fusion_agent"],  # type: ignore[index]
+            config=self.agents_config["fusion_agent"], 
             llm=self._model_name(),
             reasoning=False,
             verbose=True,
@@ -76,7 +76,7 @@ class ProtocolReverseCrew:
     def report_agent(self) -> Agent:
         # 报告智能体：输出可读的 Markdown 分析报告。
         return Agent(
-            config=self.agents_config["report_agent"],  # type: ignore[index]
+            config=self.agents_config["report_agent"], 
             llm=self._model_name(),
             reasoning=False,
             verbose=True,
@@ -126,7 +126,7 @@ class ProtocolReverseCrew:
 
     @crew
     def crew(self) -> Crew:
-        # 采用顺序执行；本项目主调度仍由 Flow 负责。
+        # 采用顺序执行(sequential)；本项目主调度仍由 Flow 负责。
         return Crew(
             agents=self.agents,
             tasks=self.tasks,

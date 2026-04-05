@@ -1,9 +1,9 @@
 # 任务配置：
 # - description: 要做什么
 # - expected_output: 输出标准
-# - agent: 由哪个智能体执行
+# - agent: 交由哪个智能体执行
 
-# 1) 预处理任务
+# 1) 预处理任务（输出traffic_profile.json）
 preprocess_task:
   description: >
     Read unknown traffic capture {pcap_path}. This step exists to transform raw
@@ -21,7 +21,7 @@ preprocess_task:
     notes/errors to keep the pipeline recoverable.
   agent: preprocess_agent
 
-# 2) 工具选择任务
+# 2) 工具选择任务（输出execution_plan.json）
 tool_selection_task:
   description: >
     Read traffic_profile.json and choose stage-wise tools with rationale.
@@ -37,7 +37,7 @@ tool_selection_task:
     primary semantic tool unless capture parsing is invalid.
   agent: tool_selector_agent
 
-# 3) 字段分段任务
+# 3) 字段分段任务（输出segment_candidates.json）
 segmentation_task:
   description: >
     Generate field boundary candidates from traffic_profile.json using the planned
@@ -54,7 +54,7 @@ segmentation_task:
     runtime_info should include attempted tools and quality-gate outcomes.
   agent: segmentation_agent
 
-# 4) 语义推断任务
+# 4) 语义推断任务（输出semantic_candidates.json）
 semantic_inference_task:
   description: >
     Infer likely semantics for segment candidates and align semantics to boundary
@@ -71,7 +71,7 @@ semantic_inference_task:
     confidence must be in [0, 1].
   agent: semantic_inference_agent
 
-# 5) 融合任务
+# 5) 融合任务（输出final_schema.json）
 fusion_task:
   description: >
     Fuse boundary and semantic evidence into one conflict-resolved schema with
@@ -88,7 +88,7 @@ fusion_task:
     global_confidence must be in [0, 1].
   agent: fusion_agent
 
-# 6) 报告任务
+# 6) 报告任务（输出report.md，供分析者阅读）
 report_task:
   description: >
     Generate a defense-ready markdown report that traces the pipeline from input

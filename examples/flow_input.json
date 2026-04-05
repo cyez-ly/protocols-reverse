@@ -1,10 +1,11 @@
 {
-  "pcap": "examples/demo.pcap",
+  "pcap": "examples/dhcp_100.pcap",
   "output": "outputs/run_from_trigger",
   "python_bin": "python3",
   "netzob_python_bin": "/root/venv",
+  "nemesys_python_bin": "/root/venv_nemesys",
   "netplier_python_bin": "/root/venv_netplier",
   "binaryinferno_python_bin": "/root/venv_binaryinferno",
   "timeout": 90,
-  "use_llm": false
+  "use_llm": true
 }

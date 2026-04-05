@@ -229,7 +229,7 @@ def _segmentation_quality_issue(
         max_span = max(max(0, item.end - item.start) for item in items)
         span_ratio = max_span / max(1, cluster_len)
         if span_ratio > max_span_ratio:
-            # Allow one relatively-large tail span when other quality signals are healthy.
+            # 若其他质量指标都健康，允许出现一个相对较大的尾段，避免过度惩罚。
             relaxed_upper = min(0.99, max_span_ratio + 0.12)
             if not (
                 len(items) >= max(1, min_fields_per_cluster)
@@ -243,7 +243,7 @@ def _segmentation_quality_issue(
 
 
 class SegmentationAgentStage:
-    # 分段阶段：执行主分段工具，必要时回退到备份工具或内置 fallback。
+    # 分段阶段：执行主分段工具，必要时回退到备份工具或内置兜底策略。
     def __init__(
         self,
         netzob_tool: Optional[NetzobTool] = None,
@@ -264,7 +264,7 @@ class SegmentationAgentStage:
         nemesys_python_bin: str,
         logger,
     ) -> List[FieldBoundaryCandidate]:
-        # 输出统一结构：segment_candidates.json
+        # 输出统一结构：字段切分候选结果文件。
         candidates: List[FieldBoundaryCandidate] = []
         tool_errors: List[str] = []
         runtime_info: Dict[str, str] = {}
@@ -310,8 +310,8 @@ class SegmentationAgentStage:
         quality_triggered = False
         quality_reason = ""
         for idx, tool_name in enumerate(ordered_tools):
-            # Single-tool-first with quality gate:
-            # run backup only when primary is empty/failed or quality gate is not satisfied.
+            # 单工具优先 + 质量门控：
+            # 仅当主工具失败/为空/质量不达标时，才启用备份工具。
             if idx > 0 and candidates and not quality_triggered:
                 break
             attempted.append(tool_name)
@@ -392,7 +392,7 @@ class SegmentationAgentStage:
                 runtime_info["segment_min_boundary_stability"] = f"{min_boundary_stability:.3f}"
                 runtime_info["segment_min_coverage_ratio"] = f"{min_coverage_ratio:.3f}"
             elif parsed_candidates and quality_triggered:
-                # When quality gate says primary segmentation is poor, use backup output as authoritative.
+                # 若主工具质量不达标，则以备份工具结果作为最终分段结果。
                 candidates.clear()
                 candidates.extend(parsed_candidates)
                 tool_errors.append(

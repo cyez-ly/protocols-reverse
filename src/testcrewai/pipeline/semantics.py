@@ -140,7 +140,7 @@ def _align_semantics_to_boundaries(
         chosen = best_range
         align_mode = "overlap"
         if chosen is None:
-            # No overlap: use nearest boundary to reduce cross-tool boundary mismatch.
+            # 若完全无重叠，则回退到“最近边界”，降低跨工具边界不一致损耗。
             best_distance: int | None = None
             for b_start, b_end in ranges:
                 distance = abs(start - b_start) + abs(end - b_end)
@@ -178,7 +178,7 @@ def _align_semantics_to_boundaries(
 
 
 class SemanticInferenceAgentStage:
-    # 语义阶段：先跑主语义工具；unknown 过高或过于单一时触发备份工具。
+    # 语义阶段：先跑主语义工具；未知占比过高或语义过于单一时触发备份工具。
     def __init__(
         self,
         netplier_adapter: Optional[NetPlierAdapter] = None,
@@ -200,7 +200,7 @@ class SemanticInferenceAgentStage:
         binaryinferno_python_bin: str,
         logger,
     ) -> List[FieldSemanticCandidate]:
-        # 输出统一结构：semantic_candidates.json
+        # 输出统一结构：字段语义候选结果文件。
         semantic_candidates: List[FieldSemanticCandidate] = []
         tool_errors: List[str] = []
         runtime_info: Dict[str, str] = {}
@@ -306,6 +306,8 @@ class SemanticInferenceAgentStage:
             need_backup = True
             backup_reason = f"主语义工具 `{primary_tool}` 未产出可用候选。"
         else:
+            # 触发备份的两个条件：
+            # 1) 未知比例过高；2) 语义类型过于单一（塌缩）。
             primary_unknown_ratio = _unknown_ratio(primary_candidates)
             runtime_info["semantic_primary_unknown_ratio"] = f"{primary_unknown_ratio:.3f}"
             dominant_type, dominant_ratio = _dominant_semantic_ratio(primary_candidates)

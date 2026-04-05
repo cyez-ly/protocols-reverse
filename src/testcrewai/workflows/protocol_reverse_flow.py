@@ -29,14 +29,14 @@ from testcrewai.pipeline.tool_selection import ToolSelectorAgentStage
 from testcrewai.utils.io import ensure_dir, write_json
 from testcrewai.utils.logging import setup_logger
 
-# 父类flow
+# 父类flow，包含kickoff方法，start =》 listen
 class ProtocolReverseFlow(Flow[ProtocolReverseState]):
     # 统一编排：预处理 -> 选工具 -> 分段 -> 语义 -> 融合 -> 报告
     initial_state = ProtocolReverseState
 
     def __init__(self, **kwargs: Any) -> None:
         super().__init__(**kwargs)
-        # 预处理阶段
+        # 预处理阶段（Stage = 阶段 / 步骤 / 工序 / 执行单元）
         self.preprocess_stage = PreprocessAgentStage()
         # 工具选择阶段
         self.selector_stage = ToolSelectorAgentStage()
@@ -471,7 +471,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
 
     # 让 LLM 给每个阶段写总结 / 注释，方便查看
     def _collect_llm_note(self, agent_name: str, prompt: str) -> None:
-        # LLM 在本项目中是“可选注释增强”，不是主决策路径。
+        # 是否调用大模型api，env中是否包含有效api-key。
         if not self._llm_enabled():
             return
         try:
@@ -482,7 +482,7 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
         except Exception as exc:
             self.state.warnings.append(f"LLM 注释已跳过（{agent_name}）: {exc}")
     
-    # 起点（用 @start + @listen 装饰器定义固定执行顺序，Flow 框架会自动按顺序运行）
+    # 起点（初始化环境）（用 @start + @listen 装饰器定义固定执行顺序，Flow 框架会自动按顺序运行）
     @start()
     def bootstrap(self) -> str:
         # 校验文件、创建输出目录、初始化日志、定义所有结果文件的保存路径。

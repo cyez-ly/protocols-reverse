@@ -20,11 +20,12 @@ class ShellRunner:
         env: Optional[dict[str, str]] = None,
         stdin_text: str | None = None,
     ) -> ShellCommandResult:
-        # 指明command
+        # 统一把命令规范成列表：字符串按 shell 规则拆分，列表则直接使用。
         cmd_list = command if isinstance(command, list) else shlex.split(command)
         start = time.perf_counter()
 
         try:
+            # 采用非 shell 模式执行，完整捕获 stdout/stderr 供上游记录与诊断。
             completed = subprocess.run(
                 cmd_list,
                 cwd=str(cwd) if cwd else None,
@@ -45,6 +46,7 @@ class ShellRunner:
                 duration_sec=round(duration, 4),
             )
         except subprocess.TimeoutExpired as exc:
+            # 超时统一映射为 124，并尽量保留子进程已产生的输出。
             duration = time.perf_counter() - start
             return ShellCommandResult(
                 command=cmd_list,
@@ -54,7 +56,7 @@ class ShellRunner:
                 timed_out=True,
                 duration_sec=round(duration, 4),
             )
-        except Exception as exc:  # pragma: no cover - defensive branch
+        except Exception as exc:  # pragma: no cover - 防御性分支
             duration = time.perf_counter() - start
             return ShellCommandResult(
                 command=cmd_list,

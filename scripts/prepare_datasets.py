@@ -14,6 +14,11 @@ from urllib.parse import quote
 
 import requests
 
+"""
+    自动下载并整理协议逆向数据集
+
+"""
+
 
 BASE_RAW_URL = "https://gitlab.com/wireshark/wireshark/-/raw/master/"
 SOURCE_NAME = "Wireshark test captures (GitLab)"

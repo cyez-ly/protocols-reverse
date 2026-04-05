@@ -7,6 +7,13 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, List, Tuple
 
+"""
+    字段分割适配器。支持 official/heuristic/auto，官方路径会尝试 NEMESYS 的分段流程，
+    失败回退启发式；输出 nemesys_segments_raw.json。
+
+"""
+
+
 PROJECT_SRC = Path(__file__).resolve().parents[2]
 if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))

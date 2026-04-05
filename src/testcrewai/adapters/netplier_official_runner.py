@@ -7,6 +7,12 @@ import runpy
 import sys
 
 
+"""
+    NetPlier 官方入口兼容启动器。
+    作用是“在子进程里更稳地运行官方 main.py”, 并做了一个Netzob兼容补丁。
+
+"""
+
 def _patch_netzob_impactpacket() -> str:
     """为部分 Netzob 版本补齐 ImpactPacket.ARP，提升 NetPlier 官方路径兼容性。"""
     try:

@@ -15,7 +15,7 @@ def _choose_segmentation_primary(profile: TrafficProfile, protos: Set[str]) -> t
     style = profile.protocol_style
     printable = profile.mean_printable_ratio
 
-    # Text traffic: Netzob tends to be more stable for coarse boundary partitioning.
+    # 文本协议通常边界特征更平滑，Netzob 在这类场景更稳健。
     if style == "text" or printable >= 0.45:
         return (
             "netzob_adapter",
@@ -23,7 +23,7 @@ def _choose_segmentation_primary(profile: TrafficProfile, protos: Set[str]) -> t
             0.82,
         )
 
-    # Hybrid/unknown but clearly binary-ish or known binary protocol clues.
+    # 风格虽混合/未知，但若出现明显二进制线索，优先 NEMESYS。
     binary_hints = {"dhcp", "dns", "ntp", "tls", "dtls", "quic", "smb", "opcua", "s7comm"}
     if style == "binary" or printable <= 0.2 or bool(protos & binary_hints):
         return (
@@ -50,7 +50,7 @@ def _choose_semantic_primary(profile: TrafficProfile, protos: Set[str]) -> tuple
             0.81,
         )
 
-    # Text/request-response protocols usually align well with NetPlier semantics.
+    # 文本/请求响应类协议通常更贴合 NetPlier 的语义模式。
     netplier_friendly = {"http", "sip", "smtp", "ftp", "imap", "pop"}
     if style == "text" or bool(protos & netplier_friendly):
         return (
@@ -89,6 +89,7 @@ class ToolSelectorAgentStage:
         warnings: List[str] = []
 
         protos = _protocols(profile)
+        # 两阶段独立决策：分段选一主一备，语义再选一主一备。
         seg_primary, seg_primary_reason, seg_primary_conf = _choose_segmentation_primary(profile, protos)
         sem_primary, sem_primary_reason, sem_primary_conf = _choose_semantic_primary(profile, protos)
 

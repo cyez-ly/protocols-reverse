@@ -4,6 +4,12 @@ import math
 from collections import defaultdict
 from typing import Dict, Iterable, List, Sequence, Tuple
 
+"""
+    公共函数库：熵计算、可打印比例、范围字符串转换、
+    按长度聚类、去重叠区间等。
+    被多个 adapter 复用。
+"""
+
 
 def shannon_entropy(values: Sequence[int]) -> float:
     # 计算离散序列的信息熵。

@@ -47,7 +47,7 @@ def _format_schema_table(schema: ProtocolSchema) -> str:
 
 
 class ReportAgentStage:
-    # 报告阶段：把各阶段中间结果整理成答辩友好的 Markdown 报告。
+    # 报告阶段：把各阶段中间结果整理成答辩友好的文档报告。
     def run(
         self,
         profile: TrafficProfile,
@@ -58,6 +58,7 @@ class ReportAgentStage:
         output_dir: str,
         logger,
     ) -> AnalysisReport:
+        # 报告只汇总结构化产物，不重新推理，确保与结构化结果一致。
         now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         md_lines = [
             "# 未知网络协议结构逆向推断报告",

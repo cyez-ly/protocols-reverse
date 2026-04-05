@@ -7,6 +7,14 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, List, Tuple
 
+"""
+
+    语义推断降级适配器（非官方 main.py）。对已有边界打分推断 length/type/payload/unknown；
+    输出 netplier_semantic_raw.json。
+
+"""
+
+
 PROJECT_SRC = Path(__file__).resolve().parents[2]
 if str(PROJECT_SRC) not in sys.path:
     sys.path.insert(0, str(PROJECT_SRC))

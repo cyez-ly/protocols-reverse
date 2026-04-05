@@ -1,3 +1,11 @@
+"""
+
+    knowledge/ 在 CrewAI 里的作用是：
+    放“给智能体检索/引用”的本地知识资料（相当于可控的私有知识库）
+    ~在本项目中并没有用到知识库~
+
+"""
+
 User name is Li Yi.
 User is an undergraduate student majoring in Computer Science at Zhengzhou University.
 User is interested in protocol reverse engineering.
