@@ -8,6 +8,13 @@ from typing import List, Optional
 
 from testcrewai.models import ShellCommandResult
 
+"""
+    统一子进程执行器
+    负责调用 subprocess.run(...)，并统一返回结构化结果
+    所有外部工具（tshark、netzob、netplier、binaryinferno 等）最终都通过它执行
+
+"""
+
 
 class ShellRunner:
     """统一的子进程执行器，支持超时与结构化输出。"""

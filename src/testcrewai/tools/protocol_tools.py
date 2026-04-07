@@ -11,6 +11,17 @@ from testcrewai.models import ToolRunResult
 from testcrewai.tools.shell_runner import ShellRunner
 from testcrewai.utils.io import read_json
 
+"""
+    工具适配层
+    把 tshark / netzob / nemesys / netplier / binaryinferno 
+    这些工具封装成统一接口 run(input_path, output_dir, extra_args)
+---------------------------------------------------------------------
+    预处理阶段调用 TsharkTool
+    分段阶段调用 NetzobTool/NemesysTool
+    语义阶段调用 NetPlierAdapter/BinaryInfernoAdapter
+
+"""
+
 
 def _normalize_python_bin(value: str) -> str:
     # 兼容两种写法：既支持 /path/to/venv，也支持 /path/to/venv/bin/python。
