@@ -15,21 +15,42 @@ def _choose_segmentation_primary(profile: TrafficProfile, protos: Set[str]) -> t
     style = profile.protocol_style
     printable = profile.mean_printable_ratio
 
-    # 文本协议通常边界特征更平滑，Netzob 在这类场景更稳健。
-    if style == "text" or printable >= 0.45:
+    text_hints = {"http", "smtp", "ftp", "imap", "pop", "sip"}
+    binary_hints = {
+        "dhcp",
+        "dns",
+        "ntp",
+        "tls",
+        "dtls",
+        "quic",
+        "smb",
+        "opcua",
+        "modbus",
+        "dnp3",
+        "s7comm",
+        "bacnet",
+    }
+
+    # 显式协议线索优先于简单可打印比例，避免 DNS/工控报文被误判为文本。
+    if bool(protos & text_hints) or (style == "text" and printable >= 0.55):
         return (
             "netzob_adapter",
             "流量更偏文本协议，优先使用 Netzob（基于熵/聚类）进行字段切分。",
             0.82,
         )
 
-    # 风格虽混合/未知，但若出现明显二进制线索，优先 NEMESYS。
-    binary_hints = {"dhcp", "dns", "ntp", "tls", "dtls", "quic", "smb", "opcua", "s7comm"}
     if style == "binary" or printable <= 0.2 or bool(protos & binary_hints):
         return (
             "nemesys_adapter",
             "流量更偏二进制协议，优先使用 NEMESYS（基于消息内转折）进行切分。",
             0.81,
+        )
+
+    if printable >= 0.55:
+        return (
+            "netzob_adapter",
+            "可打印字符比例较高，优先使用 Netzob 进行文本/半文本字段切分。",
+            0.78,
         )
 
     return (
@@ -42,7 +63,19 @@ def _choose_segmentation_primary(profile: TrafficProfile, protos: Set[str]) -> t
 def _choose_semantic_primary(profile: TrafficProfile, protos: Set[str]) -> tuple[str, str, float]:
     style = profile.protocol_style
 
-    binary_friendly = {"dhcp", "dns", "ntp", "tls", "dtls", "quic", "smb", "modbus", "s7comm"}
+    binary_friendly = {
+        "dhcp",
+        "dns",
+        "ntp",
+        "tls",
+        "dtls",
+        "quic",
+        "smb",
+        "modbus",
+        "dnp3",
+        "s7comm",
+        "bacnet",
+    }
     if style == "binary" or bool(protos & binary_friendly):
         return (
             "binaryinferno_adapter",

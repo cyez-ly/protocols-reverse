@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import os
 from pathlib import Path
 import re
 import shutil
@@ -20,6 +21,70 @@ _PCAP_MAGIC_HEADERS = {
     b"\xa1\xb2\x3c\x4d",  # big-endian, nanosecond
 }
 _PCAPNG_MAGIC_HEADER = b"\x0a\x0d\x0d\x0a"
+
+_TCP_PORT_HINTS = {
+    20: "ftp",
+    21: "ftp",
+    25: "smtp",
+    80: "http",
+    102: "s7comm",
+    110: "pop",
+    143: "imap",
+    443: "tls",
+    502: "modbus",
+    587: "smtp",
+    993: "imap",
+    995: "pop",
+    20000: "dnp3",
+}
+
+_UDP_PORT_HINTS = {
+    53: "dns",
+    67: "dhcp",
+    68: "dhcp",
+    123: "ntp",
+    161: "snmp",
+    162: "snmp",
+    1900: "ssdp",
+    47808: "bacnet",
+}
+
+_APPLICATION_PROTOCOLS = {
+    "http",
+    "smtp",
+    "ftp",
+    "imap",
+    "pop",
+    "sip",
+    "dns",
+    "dhcp",
+    "ntp",
+    "modbus",
+    "dnp3",
+    "s7comm",
+    "bacnet",
+    "opcua",
+}
+
+_TARGET_PROTOCOL_PORTS = {
+    "http": {"tcp": {80, 8080, 8000, 8008, 8888}},
+    "smtp": {"tcp": {25, 465, 587}},
+    "ftp": {"tcp": {20, 21}},
+    "imap": {"tcp": {143, 993}},
+    "pop": {"tcp": {110, 995}},
+    "dns": {"udp": {53}, "tcp": {53}},
+    "dhcp": {"udp": {67, 68}},
+    "ntp": {"udp": {123}},
+    "modbus": {"tcp": {502}},
+    "dnp3": {"tcp": {20000}, "udp": {20000}},
+    "s7comm": {"tcp": {102}},
+    "bacnet": {"udp": {47808}},
+}
+
+_PROTOCOL_ALIASES = {
+    "bootp": "dhcp",
+    "pop3": "pop",
+}
 
 
 def _safe_mean(values: List[float]) -> float:
@@ -75,7 +140,146 @@ def _has_valid_capture_magic(file_path: Path, capture_format: str) -> bool:
     return True
 
 
-def _extract_messages_with_scapy(file_path: Path, max_samples: int = 300) -> Tuple[List[bytes], List[SessionFeature], Dict[str, int], List[str]]:
+def _add_port_protocol_hints(protocols: Dict[str, int], transport: str, sport: int, dport: int) -> None:
+    hints = _TCP_PORT_HINTS if transport == "tcp" else _UDP_PORT_HINTS if transport == "udp" else {}
+    for port in {sport, dport}:
+        name = hints.get(port)
+        if name:
+            protocols[name] += 1
+
+
+def _normalize_protocol_name(value: str) -> str:
+    normalized = value.strip().lower()
+    return _PROTOCOL_ALIASES.get(normalized, normalized)
+
+
+def _infer_target_protocol(file_path: Path) -> Optional[str]:
+    env_raw = str(os.getenv("TARGET_PROTOCOL") or os.getenv("PROTOCOL_TARGET") or "").strip()
+    if env_raw:
+        normalized_env = _normalize_protocol_name(env_raw)
+        if normalized_env in _APPLICATION_PROTOCOLS:
+            return normalized_env
+
+    tokens = {
+        _normalize_protocol_name(token)
+        for token in re.split(r"[^0-9A-Za-z]+", file_path.stem.lower())
+        if token.strip()
+    }
+    for protocol in sorted(_APPLICATION_PROTOCOLS, key=len, reverse=True):
+        if protocol in tokens or protocol in file_path.stem.lower():
+            return protocol
+    return None
+
+
+def _target_transports(target_protocol: Optional[str]) -> set[str]:
+    if not target_protocol:
+        return set()
+    return set(_TARGET_PROTOCOL_PORTS.get(target_protocol, {}).keys())
+
+
+def _packet_protocol_names(
+    *,
+    transport: str,
+    sport: int,
+    dport: int,
+    payload: bytes,
+    has_dns: bool,
+    has_dhcp: bool,
+) -> set[str]:
+    names = {transport} if transport else set()
+    hints = _TCP_PORT_HINTS if transport == "tcp" else _UDP_PORT_HINTS if transport == "udp" else {}
+    for port in {sport, dport}:
+        hinted = hints.get(port)
+        if hinted:
+            names.add(hinted)
+    if has_dns or (transport == "udp" and payload and _looks_like_dns_payload(payload)):
+        names.add("dns")
+    if has_dhcp or (transport == "udp" and {sport, dport} & {67, 68}):
+        names.add("dhcp")
+    if transport == "udp" and {sport, dport} & {123}:
+        names.add("ntp")
+    return {_normalize_protocol_name(item) for item in names if item}
+
+
+def _packet_matches_target_protocol(
+    target_protocol: Optional[str],
+    *,
+    transport: str,
+    sport: int,
+    dport: int,
+    payload: bytes,
+    has_dns: bool,
+    has_dhcp: bool,
+) -> bool:
+    if not target_protocol:
+        return True
+    names = _packet_protocol_names(
+        transport=transport,
+        sport=sport,
+        dport=dport,
+        payload=payload,
+        has_dns=has_dns,
+        has_dhcp=has_dhcp,
+    )
+    if target_protocol in names:
+        return True
+    ports_by_transport = _TARGET_PROTOCOL_PORTS.get(target_protocol, {})
+    return bool({sport, dport} & ports_by_transport.get(transport, set()))
+
+
+def _tshark_display_filter_for_target(target_protocol: Optional[str]) -> Optional[str]:
+    if not target_protocol:
+        return None
+    ports_by_transport = _TARGET_PROTOCOL_PORTS.get(target_protocol, {})
+    clauses: List[str] = []
+    for transport, ports in ports_by_transport.items():
+        for port in sorted(ports):
+            clauses.append(f"{transport}.port == {port}")
+    if target_protocol in {"dns", "dhcp", "ntp", "http", "smtp"}:
+        protocol_filter = "bootp" if target_protocol == "dhcp" else target_protocol
+        clauses.append(protocol_filter)
+    if not clauses:
+        return None
+    return " || ".join(f"({item})" for item in clauses)
+
+
+def _allowed_protocol_tokens(target_protocol: Optional[str]) -> set[str]:
+    base = {
+        "tcp",
+        "udp",
+        "dns",
+        "dhcp",
+        "bootp",
+        "ntp",
+        "icmp",
+        "http",
+        "smtp",
+        "ftp",
+        "imap",
+        "pop",
+        "sip",
+        "tls",
+        "quic",
+        "modbus",
+        "dnp3",
+        "s7comm",
+        "bacnet",
+        "opcua",
+    }
+    if not target_protocol:
+        return base
+    allowed = {target_protocol}
+    if target_protocol == "dhcp":
+        allowed.add("bootp")
+    allowed.update(_target_transports(target_protocol))
+    return allowed
+
+
+def _extract_messages_with_scapy(
+    file_path: Path,
+    max_samples: int = 300,
+    target_protocol: Optional[str] = None,
+) -> Tuple[List[bytes], List[SessionFeature], Dict[str, int], List[str]]:
     notes: List[str] = []
     protocols: Dict[str, int] = defaultdict(int)
 
@@ -102,7 +306,24 @@ def _extract_messages_with_scapy(file_path: Path, max_samples: int = 300) -> Tup
         }
     )
 
+    all_protocols: Dict[str, int] = defaultdict(int)
+    total_payloads = 0
+    dropped_payloads = 0
+
     for pkt in packets:
+        if pkt.haslayer(TCP):
+            protocol = "tcp"
+            sport = int(pkt[TCP].sport)
+            dport = int(pkt[TCP].dport)
+        elif pkt.haslayer(UDP):
+            protocol = "udp"
+            sport = int(pkt[UDP].sport)
+            dport = int(pkt[UDP].dport)
+        else:
+            protocol = "other"
+            sport = 0
+            dport = 0
+
         payload = b""
 
         # 优先拿显式原始负载；若没有原始层，再回退到传输层负载。
@@ -120,33 +341,41 @@ def _extract_messages_with_scapy(file_path: Path, max_samples: int = 300) -> Tup
             except Exception:
                 payload = b""
 
-        if payload and len(payloads) < max_samples:
-            payloads.append(payload)
+        has_dns = bool(pkt.haslayer(DNS))
+        has_dhcp = bool(pkt.haslayer(DHCP) or pkt.haslayer(BOOTP))
+        packet_protocols = _packet_protocol_names(
+            transport=protocol,
+            sport=sport,
+            dport=dport,
+            payload=payload,
+            has_dns=has_dns,
+            has_dhcp=has_dhcp,
+        )
+        for name in packet_protocols:
+            all_protocols[name] += 1
 
-        if pkt.haslayer(TCP):
-            protocol = "tcp"
-            sport = int(pkt[TCP].sport)
-            dport = int(pkt[TCP].dport)
-        elif pkt.haslayer(UDP):
-            protocol = "udp"
-            sport = int(pkt[UDP].sport)
-            dport = int(pkt[UDP].dport)
-        else:
-            protocol = "other"
-            sport = 0
-            dport = 0
+        matches_target = _packet_matches_target_protocol(
+            target_protocol,
+            transport=protocol,
+            sport=sport,
+            dport=dport,
+            payload=payload,
+            has_dns=has_dns,
+            has_dhcp=has_dhcp,
+        )
 
-        protocols[protocol] += 1
-        if pkt.haslayer(DNS):
-            protocols["dns"] += 1
-        if pkt.haslayer(DHCP) or pkt.haslayer(BOOTP):
-            protocols["dhcp"] += 1
-        if protocol == "udp" and (sport == 67 or sport == 68 or dport == 67 or dport == 68):
-            protocols["dhcp"] += 1
-        if protocol == "udp" and (sport == 123 or dport == 123):
-            protocols["ntp"] += 1
-        if protocol == "udp" and payload and _looks_like_dns_payload(payload):
-            protocols["dns"] += 1
+        if payload:
+            total_payloads += 1
+            if matches_target and len(payloads) < max_samples:
+                payloads.append(payload)
+            elif target_protocol and not matches_target:
+                dropped_payloads += 1
+
+        if not matches_target:
+            continue
+
+        for name in packet_protocols:
+            protocols[name] += 1
 
         if pkt.haslayer(IP):
             src = str(pkt[IP].src)
@@ -163,12 +392,24 @@ def _extract_messages_with_scapy(file_path: Path, max_samples: int = 300) -> Tup
         item = session_store[session_id]
         item["packet_count"] += 1
         item["payload_sum"] += float(len(payload))
-        item["protocol"] = protocol
+        item["protocol"] = target_protocol if target_protocol and target_protocol in packet_protocols else protocol
 
         if endpoint_a == canonical[0]:
             item["forward"] += 1
         else:
             item["reverse"] += 1
+
+    if target_protocol:
+        summary = ", ".join(f"{name}:{count}" for name, count in sorted(all_protocols.items()))
+        notes.append(
+            (
+                f"目标协议过滤已启用: target={target_protocol}, "
+                f"kept_payloads={len(payloads)}, dropped_non_target_payloads={dropped_payloads}, "
+                f"total_payloads={total_payloads}"
+            )
+        )
+        if summary:
+            notes.append(f"过滤前协议线索: {summary}")
 
     session_features: List[SessionFeature] = []
     for session_id, values in session_store.items():
@@ -260,7 +501,12 @@ def _parse_tshark_hex_tokens(text: str) -> List[bytes]:
     return values
 
 
-def _extract_messages_with_tshark(file_path: Path, timeout_sec: int = 90, max_samples: int = 300) -> Tuple[List[bytes], List[str]]:
+def _extract_messages_with_tshark(
+    file_path: Path,
+    timeout_sec: int = 90,
+    max_samples: int = 300,
+    target_protocol: Optional[str] = None,
+) -> Tuple[List[bytes], List[str]]:
     notes: List[str] = []
     if shutil.which("tshark") is None:
         notes.append("tshark 不可用，无法执行 payload 提取兜底")
@@ -270,9 +516,13 @@ def _extract_messages_with_tshark(file_path: Path, timeout_sec: int = 90, max_sa
     payloads: List[bytes] = []
     seen_hex: set[str] = set()
     candidate_fields = ["udp.payload", "tcp.payload", "data.data", "data"]
+    display_filter = _tshark_display_filter_for_target(target_protocol)
 
     for field_name in candidate_fields:
-        command = ["tshark", "-r", str(file_path), "-T", "fields", "-e", field_name]
+        command = ["tshark", "-r", str(file_path)]
+        if display_filter:
+            command.extend(["-Y", display_filter])
+        command.extend(["-T", "fields", "-e", field_name])
         result = runner.run(command=command, timeout_sec=timeout_sec)
         if result.return_code != 0:
             notes.append(f"tshark 字段 {field_name} 提取失败: {result.stderr or 'unknown error'}")
@@ -302,13 +552,18 @@ def _extract_messages_with_tshark(file_path: Path, timeout_sec: int = 90, max_sa
             break
 
     if payloads:
-        notes.append(f"tshark payload 兜底总样本数={len(payloads)}")
+        target_note = f", target={target_protocol}" if target_protocol else ""
+        notes.append(f"tshark payload 兜底总样本数={len(payloads)}{target_note}")
     else:
         notes.append("tshark payload 提取未返回任何字节")
     return payloads, notes
 
 
-def _extract_protocols_with_tshark(file_path: Path, timeout_sec: int = 90) -> Tuple[Dict[str, int], List[str]]:
+def _extract_protocols_with_tshark(
+    file_path: Path,
+    timeout_sec: int = 90,
+    target_protocol: Optional[str] = None,
+) -> Tuple[Dict[str, int], List[str]]:
     notes: List[str] = []
     protocols: Dict[str, int] = defaultdict(int)
     if shutil.which("tshark") is None:
@@ -316,7 +571,11 @@ def _extract_protocols_with_tshark(file_path: Path, timeout_sec: int = 90) -> Tu
         return {}, notes
 
     runner = ShellRunner()
-    command = ["tshark", "-r", str(file_path), "-T", "fields", "-e", "frame.protocols"]
+    command = ["tshark", "-r", str(file_path)]
+    display_filter = _tshark_display_filter_for_target(target_protocol)
+    if display_filter:
+        command.extend(["-Y", display_filter])
+    command.extend(["-T", "fields", "-e", "frame.protocols"])
     result = runner.run(command=command, timeout_sec=timeout_sec)
     if result.return_code != 0:
         notes.append(f"tshark frame.protocols 提取失败: {result.stderr or 'unknown error'}")
@@ -330,10 +589,12 @@ def _extract_protocols_with_tshark(file_path: Path, timeout_sec: int = 90) -> Tu
             token = token.strip()
             if not token:
                 continue
-            if token in {"tcp", "udp", "dns", "dhcp", "bootp", "ntp", "icmp", "http", "tls", "quic"}:
-                protocols[token] += 1
+            allowed_tokens = _allowed_protocol_tokens(target_protocol)
+            if token in allowed_tokens:
+                protocols[_normalize_protocol_name(token)] += 1
 
-    notes.append(f"tshark frame.protocols 共提取到 {len(protocols)} 个协议线索")
+    target_note = f"（target={target_protocol}）" if target_protocol else ""
+    notes.append(f"tshark frame.protocols 共提取到 {len(protocols)} 个协议线索{target_note}")
     return dict(protocols), notes
 
 
@@ -347,18 +608,120 @@ def _classify_protocol_style(mean_entropy: float, mean_printable: float) -> str:
     return "hybrid"
 
 
-def _build_message_clusters(payloads: List[bytes]) -> List[MessageCluster]:
-    clusters = cluster_messages_by_length(payloads)
+def _length_bucket(length: int) -> str:
+    if length <= 64:
+        return str(length)
+    if length <= 512:
+        lower = (length // 64) * 64
+        return f"{lower}-{lower + 63}"
+    lower = (length // 256) * 256
+    return f"{lower}-{lower + 255}"
+
+
+def _first_text_token(payload: bytes) -> str:
+    if not payload:
+        return "empty"
+    line = payload.split(b"\r\n", 1)[0].split(b"\n", 1)[0][:96]
+    try:
+        decoded = line.decode("ascii", errors="ignore").strip()
+    except Exception:
+        decoded = ""
+    if not decoded:
+        return "binary-prefix"
+    token = decoded.split(maxsplit=1)[0].strip(":;,.").lower()
+    if not token:
+        return "text"
+    return re.sub(r"[^0-9a-z_./-]+", "_", token)[:32]
+
+
+def _dhcp_option_message_type(payload: bytes) -> str:
+    marker = b"\x63\x82\x53\x63"
+    start = payload.find(marker)
+    if start < 0:
+        return "unknown"
+    idx = start + 4
+    while idx < len(payload):
+        option = payload[idx]
+        idx += 1
+        if option == 255:
+            break
+        if option == 0:
+            continue
+        if idx >= len(payload):
+            break
+        opt_len = payload[idx]
+        idx += 1
+        value = payload[idx : idx + opt_len]
+        idx += opt_len
+        if option == 53 and value:
+            return str(value[0])
+    return "unknown"
+
+
+def _cluster_key_for_payload(payload: bytes, protocol_style: str, protocols: set[str]) -> str:
+    length_key = _length_bucket(len(payload))
+    if "dhcp" in protocols and len(payload) >= 1:
+        return f"dhcp:op={payload[0]}:msg={_dhcp_option_message_type(payload)}:len={length_key}"
+    if "dns" in protocols and len(payload) >= 12:
+        flags = int.from_bytes(payload[2:4], "big")
+        qr = "resp" if flags & 0x8000 else "query"
+        qd = int.from_bytes(payload[4:6], "big")
+        an = int.from_bytes(payload[6:8], "big")
+        return f"dns:{qr}:qd={min(qd, 3)}:an={min(an, 3)}:len={length_key}"
+    if "ntp" in protocols and payload:
+        mode = payload[0] & 0x07
+        version = (payload[0] >> 3) & 0x07
+        return f"ntp:v={version}:mode={mode}:len={length_key}"
+    if "modbus" in protocols and len(payload) >= 8:
+        function_code = payload[7]
+        return f"modbus:fc={function_code}:len={length_key}"
+    if "dnp3" in protocols and len(payload) >= 4:
+        return f"dnp3:ctrl={payload[3]}:len={length_key}"
+
+    text_protocols = {"http", "smtp", "ftp", "imap", "pop", "sip"}
+    if protocols & text_protocols or protocol_style == "text" or printable_ratio(payload) >= 0.60:
+        token = _first_text_token(payload)
+        return f"text:{token}:len={length_key}"
+
+    if len(payload) >= 2:
+        return f"binary:prefix={payload[:2].hex()}:len={length_key}"
+    return f"length:{len(payload)}"
+
+
+def _build_message_clusters(
+    payloads: List[bytes],
+    protocol_style: str = "unknown",
+    protocols_observed: Optional[List[str]] = None,
+) -> List[MessageCluster]:
+    protocols = {_normalize_protocol_name(item) for item in (protocols_observed or [])}
+    use_content_key = bool(protocols & _APPLICATION_PROTOCOLS) or protocol_style in {"text", "binary", "hybrid"}
+    if use_content_key:
+        clusters: Dict[str, List[bytes]] = defaultdict(list)
+        for payload in payloads:
+            clusters[_cluster_key_for_payload(payload, protocol_style, protocols)].append(payload)
+        clusters = {
+            key: members
+            for key, members in sorted(clusters.items(), key=lambda item: (-len(item[1]), item[0]))
+            if len(members) >= 2
+        } or {"length:fallback": payloads}
+    else:
+        clusters = cluster_messages_by_length(payloads)
+
     result: List[MessageCluster] = []
 
-    for cluster_id, messages in clusters.items():
+    for index, (basis_key, messages) in enumerate(clusters.items(), start=1):
         lengths = [len(msg) for msg in messages]
+        unique_lengths = sorted(set(lengths))
+        representative_lengths = unique_lengths[:8]
+        if unique_lengths and unique_lengths[-1] not in representative_lengths:
+            representative_lengths = representative_lengths[:7] + [unique_lengths[-1]]
         result.append(
             MessageCluster(
-                cluster_id=cluster_id,
+                cluster_id=f"cluster_{index}",
+                basis=f"content:key={basis_key}" if use_content_key else "length",
                 sample_count=len(messages),
                 mean_length=round(_safe_mean([float(v) for v in lengths]), 3),
-                representative_lengths=sorted(set(lengths))[:8],
+                representative_lengths=representative_lengths,
             )
         )
     return result
@@ -422,10 +785,13 @@ class PreprocessAgentStage:
     def run(self, pcap_path: str, output_dir: str, timeout_sec: int, python_bin: str, logger) -> TrafficProfile:
         # 输入可以是 pcap/pcapng；若工具缺失会自动走兜底路径。
         input_path = Path(pcap_path)
+        target_protocol = _infer_target_protocol(input_path)
         extension_format = _detect_extension_format(input_path)
         magic_format = _detect_capture_format_from_magic(input_path)
         profile = TrafficProfile(input_file=str(input_path), capture_format=_detect_capture_format(input_path))
         is_capture_format = profile.capture_format in {"pcap", "pcapng"}
+        if target_protocol:
+            profile.notes.append(f"根据输入文件名/环境变量推断目标协议: {target_protocol}")
 
         if (
             magic_format in {"pcap", "pcapng"}
@@ -461,14 +827,21 @@ class PreprocessAgentStage:
         if tshark_result.success:
             profile.notes.append("已收集 tshark 摘要")
             summary_text = tshark_result.data.get("summary", "").lower()
-            for keyword in ["tcp", "udp", "http", "dns", "tls", "dhcp", "bootp"]:
-                if keyword in summary_text and keyword not in profile.protocols_observed:
-                    profile.protocols_observed.append(keyword)
+            summary_keywords = ["tcp", "udp", "http", "dns", "tls", "dhcp", "bootp", "smtp", "ntp"]
+            if target_protocol:
+                summary_keywords = [item for item in summary_keywords if item in _allowed_protocol_tokens(target_protocol)]
+            for keyword in summary_keywords:
+                normalized_keyword = _normalize_protocol_name(keyword)
+                if keyword in summary_text and normalized_keyword not in profile.protocols_observed:
+                    profile.protocols_observed.append(normalized_keyword)
         else:
             profile.notes.append(f"tshark 不可用或执行失败: {tshark_result.error}")
 
         # 主路径：scapy 提取消息与会话；若失败则由后续 tshark 兜底。
-        payloads, session_features, protocols, parse_notes = _extract_messages_with_scapy(input_path)
+        payloads, session_features, protocols, parse_notes = _extract_messages_with_scapy(
+            input_path,
+            target_protocol=target_protocol,
+        )
         profile.notes.extend(parse_notes)
         profile.session_features = session_features
         profile.session_count = len(session_features)
@@ -476,6 +849,7 @@ class PreprocessAgentStage:
         tshark_protocols, tshark_protocol_notes = _extract_protocols_with_tshark(
             input_path,
             timeout_sec=timeout_sec,
+            target_protocol=target_protocol,
         )
         profile.notes.extend(tshark_protocol_notes)
         for name, count in tshark_protocols.items():
@@ -487,6 +861,7 @@ class PreprocessAgentStage:
                 input_path,
                 timeout_sec=timeout_sec,
                 max_samples=300,
+                target_protocol=target_protocol,
             )
             profile.notes.extend(tshark_notes)
             if tshark_payloads:
@@ -518,7 +893,11 @@ class PreprocessAgentStage:
                     profile.mean_printable_ratio = printable_ratio(window)
                     profile.protocol_style = _classify_protocol_style(profile.mean_entropy, profile.mean_printable_ratio)
                     profile.sample_messages_hex = [window[:128].hex()]
-                    profile.message_clusters = _build_message_clusters([window[:128]])
+                    profile.message_clusters = _build_message_clusters(
+                        [window[:128]],
+                        protocol_style=profile.protocol_style,
+                        protocols_observed=profile.protocols_observed,
+                    )
                     profile.notes.append("fallback 模式：使用文件字节窗口作为伪消息")
                 else:
                     profile.errors.append("抓包文件为空或读取失败")
@@ -540,7 +919,11 @@ class PreprocessAgentStage:
             profile.mean_printable_ratio = round(_safe_mean(printable_ratios), 3)
             profile.protocol_style = _classify_protocol_style(profile.mean_entropy, profile.mean_printable_ratio)
             profile.sample_messages_hex = [payload.hex() for payload in payloads[:120]]
-            profile.message_clusters = _build_message_clusters(payloads)
+            profile.message_clusters = _build_message_clusters(
+                payloads,
+                protocol_style=profile.protocol_style,
+                protocols_observed=profile.protocols_observed,
+            )
 
         profile_path = Path(output_dir) / "traffic_profile.json"
         write_json(profile_path, profile)

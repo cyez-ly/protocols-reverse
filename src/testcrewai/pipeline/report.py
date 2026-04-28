@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime
 from pathlib import Path
+from collections import Counter
 from typing import List
 
 from testcrewai.models import (
@@ -44,6 +45,66 @@ def _format_schema_table(schema: ProtocolSchema) -> str:
             f"| {field.message_cluster} | {field.name} | {field.start}:{field.end} | {field.semantic_type} | {field.confidence:.3f} |"
         )
     return "\n".join(lines)
+
+
+def _result_quality_summary(
+    profile: TrafficProfile,
+    boundaries: List[FieldBoundaryCandidate],
+    semantics: List[FieldSemanticCandidate],
+    schema: ProtocolSchema,
+) -> tuple[str, List[str]]:
+    field_count = len(schema.fields)
+    semantic_field_count = max(1, field_count)
+    non_unknown = sum(1 for field in schema.fields if field.semantic_type != "unknown")
+    semantic_coverage = non_unknown / semantic_field_count
+
+    type_counter = Counter(field.semantic_type for field in schema.fields)
+    dominant_ratio = 1.0
+    if type_counter and field_count > 0:
+        dominant_ratio = type_counter.most_common(1)[0][1] / field_count
+
+    cluster_count = max(1, len(schema.message_clusters))
+    avg_fields_per_cluster = field_count / cluster_count
+    protocol_count = len({item for item in profile.protocols_observed if item not in {"tcp", "udp", "other"}})
+
+    sample_score = min(1.0, profile.packet_count / 50.0)
+    diversity_score = max(0.0, 1.0 - dominant_ratio)
+    score = (
+        schema.global_confidence * 0.45
+        + semantic_coverage * 0.25
+        + sample_score * 0.15
+        + diversity_score * 0.15
+    )
+
+    reasons = [
+        f"字段数量: {field_count}",
+        f"语义覆盖率: {semantic_coverage:.2%}",
+        f"主导语义占比: {dominant_ratio:.2%}",
+        f"平均每簇字段数: {avg_fields_per_cluster:.2f}",
+        f"全局置信度: {schema.global_confidence:.3f}",
+    ]
+
+    if protocol_count >= 3:
+        score -= 0.12
+        reasons.append("协议线索较杂，可能影响结构归纳稳定性")
+    if avg_fields_per_cluster >= 24:
+        score -= 0.08
+        reasons.append("平均字段数偏多，存在过度切分风险")
+    if dominant_ratio >= 0.85 and field_count >= 5:
+        score -= 0.10
+        reasons.append("语义类型过于集中，说明语义解释偏粗")
+    if not boundaries or not semantics:
+        score -= 0.20
+        reasons.append("缺少边界或语义候选，中间证据不足")
+
+    if score >= 0.68:
+        level = "高"
+    elif score >= 0.52:
+        level = "中"
+    else:
+        level = "低"
+    reasons.append(f"综合质量得分: {max(0.0, min(1.0, score)):.3f}")
+    return level, reasons
 
 
 class ReportAgentStage:
@@ -111,9 +172,16 @@ class ReportAgentStage:
                 f"- 全局置信度: `{schema.global_confidence}`",
                 _format_schema_table(schema),
                 "",
-                "## 6. 冲突消解说明",
+                "## 6. 结果质量评估",
             ]
         )
+
+        quality_level, quality_reasons = _result_quality_summary(profile, boundaries, semantics, schema)
+        md_lines.append(f"- 质量等级: `{quality_level}`")
+        for item in quality_reasons:
+            md_lines.append(f"- {item}")
+
+        md_lines.extend(["", "## 7. 冲突消解说明"])
 
         if schema.conflict_resolutions:
             for item in schema.conflict_resolutions:
@@ -121,7 +189,7 @@ class ReportAgentStage:
         else:
             md_lines.append("- 未检测到高强度冲突，按最高加权分直接选择。")
 
-        md_lines.extend(["", "## 7. 局限性分析"])
+        md_lines.extend(["", "## 8. 局限性分析"])
         if schema.limitations:
             for item in schema.limitations:
                 md_lines.append(f"- {item}")
@@ -129,12 +197,12 @@ class ReportAgentStage:
             md_lines.append("- 当前样本规模较小，后续需增加多会话样本进行稳定性验证。")
 
         if profile.notes:
-            md_lines.extend(["", "## 8. 运行备注"])
+            md_lines.extend(["", "## 9. 运行备注"])
             for note in profile.notes:
                 md_lines.append(f"- {note}")
 
         if profile.errors:
-            md_lines.extend(["", "## 9. 错误信息"])
+            md_lines.extend(["", "## 10. 错误信息"])
             for err in profile.errors:
                 md_lines.append(f"- {err}")
 

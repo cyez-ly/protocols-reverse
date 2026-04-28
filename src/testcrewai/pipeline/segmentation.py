@@ -6,6 +6,7 @@ import re
 from typing import Dict, List, Optional, Tuple
 
 from testcrewai.models import ExecutionPlan, FieldBoundaryCandidate, TrafficProfile
+from testcrewai.pipeline.preprocess import _cluster_key_for_payload, _normalize_protocol_name
 from testcrewai.tools.protocol_tools import NemesysTool, NetzobTool
 from testcrewai.utils.io import write_json
 
@@ -18,6 +19,155 @@ def _deduplicate(candidates: List[FieldBoundaryCandidate]) -> List[FieldBoundary
         if not cached or candidate.confidence > cached.confidence:
             best[key] = candidate
     return sorted(best.values(), key=lambda item: (item.message_cluster, item.start, item.end))
+
+
+def _profile_protocols(profile: TrafficProfile) -> set[str]:
+    return {item.strip().lower() for item in profile.protocols_observed if item.strip()}
+
+
+def _is_text_profile(profile: TrafficProfile) -> bool:
+    text_protocols = {"http", "smtp", "ftp", "imap", "pop", "sip"}
+    protos = _profile_protocols(profile)
+    if protos & text_protocols:
+        return True
+    return profile.protocol_style == "text" and profile.mean_printable_ratio >= 0.60
+
+
+def _decode_sample_messages(profile: TrafficProfile) -> List[bytes]:
+    payloads: List[bytes] = []
+    for item in profile.sample_messages_hex:
+        try:
+            payload = bytes.fromhex(item)
+        except ValueError:
+            continue
+        if payload:
+            payloads.append(payload)
+    return payloads
+
+
+def _payloads_by_cluster(profile: TrafficProfile) -> Dict[str, List[bytes]]:
+    payloads = _decode_sample_messages(profile)
+    grouped: Dict[str, List[bytes]] = {cluster.cluster_id: [] for cluster in profile.message_clusters}
+    if not payloads or not profile.message_clusters:
+        return grouped
+
+    protocols = {_normalize_protocol_name(item) for item in profile.protocols_observed}
+    basis_to_cluster: Dict[str, str] = {}
+    for cluster in profile.message_clusters:
+        if cluster.basis.startswith("content:key="):
+            basis_to_cluster[cluster.basis.split("content:key=", maxsplit=1)[1]] = cluster.cluster_id
+
+    length_to_cluster: Dict[int, str] = {}
+    for cluster in profile.message_clusters:
+        for length in cluster.representative_lengths:
+            length_to_cluster[int(length)] = cluster.cluster_id
+
+    length_map = _cluster_length_map(profile)
+    for payload in payloads:
+        cluster_id = None
+        if basis_to_cluster:
+            cluster_id = basis_to_cluster.get(
+                _cluster_key_for_payload(payload, profile.protocol_style, protocols)
+            )
+        if cluster_id is None:
+            cluster_id = length_to_cluster.get(len(payload))
+        if cluster_id is None and length_map:
+            cluster_id = min(
+                length_map,
+                key=lambda item: abs(length_map[item] - len(payload)),
+            )
+        if cluster_id is not None:
+            grouped.setdefault(cluster_id, []).append(payload)
+    return grouped
+
+
+def _text_boundary_points(payload: bytes, max_fields: int = 36) -> List[int]:
+    points = {0, len(payload)}
+    if not payload:
+        return [0]
+
+    header_end = payload.find(b"\r\n\r\n")
+    if header_end < 0:
+        header_end = payload.find(b"\n\n")
+    scan_limit = header_end + 4 if header_end >= 0 else min(len(payload), 1024)
+
+    for delimiter in [b"\r\n", b"\n"]:
+        start = 0
+        while start < scan_limit:
+            idx = payload.find(delimiter, start, scan_limit)
+            if idx < 0:
+                break
+            points.add(min(len(payload), idx + len(delimiter)))
+            start = idx + len(delimiter)
+            if len(points) >= max_fields:
+                break
+        if len(points) >= max_fields:
+            break
+
+    first_line_end = min(
+        [idx for idx in [payload.find(b"\r\n"), payload.find(b"\n"), scan_limit] if idx >= 0],
+        default=scan_limit,
+    )
+    for delimiter in [b" ", b"\t"]:
+        start = 0
+        while start < first_line_end:
+            idx = payload.find(delimiter, start, first_line_end)
+            if idx < 0:
+                break
+            points.add(min(len(payload), idx + 1))
+            start = idx + 1
+
+    colon_limit = min(scan_limit, 768)
+    start = 0
+    while start < colon_limit:
+        idx = payload.find(b":", start, colon_limit)
+        if idx < 0:
+            break
+        points.add(min(len(payload), idx + 1))
+        start = idx + 1
+        if len(points) >= max_fields:
+            break
+
+    if len(points) <= 3 and len(payload) > 64:
+        for point in [min(64, len(payload)), min(256, len(payload)), len(payload)]:
+            points.add(point)
+
+    ordered = sorted(point for point in points if 0 <= point <= len(payload))
+    if len(ordered) > max_fields + 1:
+        ordered = ordered[:max_fields] + [len(payload)]
+        ordered = sorted(set(ordered))
+    return ordered
+
+
+def _text_protocol_candidates(profile: TrafficProfile) -> List[FieldBoundaryCandidate]:
+    if not _is_text_profile(profile):
+        return []
+
+    grouped_payloads = _payloads_by_cluster(profile)
+    candidates: List[FieldBoundaryCandidate] = []
+    for cluster in profile.message_clusters:
+        payloads = grouped_payloads.get(cluster.cluster_id, [])
+        payload = payloads[0] if payloads else b""
+        if not payload and cluster.representative_lengths:
+            payload = b" " * int(cluster.representative_lengths[0])
+        if not payload:
+            continue
+
+        points = _text_boundary_points(payload)
+        for start, end in zip(points[:-1], points[1:]):
+            if end <= start:
+                continue
+            candidates.append(
+                FieldBoundaryCandidate(
+                    message_cluster=cluster.cluster_id,
+                    start=start,
+                    end=end,
+                    confidence=0.68,
+                    source_tool="text_segmenter",
+                    reason="基于文本协议分隔符/行结构的轻量切分",
+                )
+            )
+    return candidates
 
 
 def _fallback_candidates(profile: TrafficProfile) -> List[FieldBoundaryCandidate]:
@@ -89,11 +239,136 @@ def _cluster_length_map(profile: TrafficProfile) -> Dict[str, int]:
     result: Dict[str, int] = {}
     for cluster in profile.message_clusters:
         if cluster.representative_lengths:
-            result[cluster.cluster_id] = int(cluster.representative_lengths[0])
+            result[cluster.cluster_id] = max(int(length) for length in cluster.representative_lengths)
             continue
         if cluster.mean_length > 0:
             result[cluster.cluster_id] = int(round(cluster.mean_length))
     return result
+
+
+def _clamp_candidates_to_cluster_lengths(
+    candidates: List[FieldBoundaryCandidate],
+    profile: TrafficProfile,
+) -> tuple[List[FieldBoundaryCandidate], int]:
+    length_map = _cluster_length_map(profile)
+    if not length_map:
+        return candidates, 0
+
+    clamped: List[FieldBoundaryCandidate] = []
+    adjusted_count = 0
+    for item in candidates:
+        cluster_len = length_map.get(item.message_cluster)
+        if cluster_len is None or cluster_len <= 0:
+            clamped.append(item)
+            continue
+
+        start = max(0, min(item.start, cluster_len))
+        end = max(start, min(item.end, cluster_len))
+        if end <= start:
+            adjusted_count += 1
+            continue
+
+        if start != item.start or end != item.end:
+            adjusted_count += 1
+            clamped.append(
+                FieldBoundaryCandidate(
+                    message_cluster=item.message_cluster,
+                    start=start,
+                    end=end,
+                    confidence=round(max(0.25, item.confidence * 0.92), 3),
+                    source_tool=item.source_tool,
+                    reason=(
+                        f"{item.reason}; clipped_to_cluster_length={cluster_len} "
+                        f"from={item.start}:{item.end}"
+                    ),
+                )
+            )
+            continue
+        clamped.append(item)
+
+    return clamped, adjusted_count
+
+
+def _merge_overfragmented_candidates(
+    candidates: List[FieldBoundaryCandidate],
+    profile: TrafficProfile,
+) -> tuple[List[FieldBoundaryCandidate], int]:
+    if str(os.getenv("SEGMENT_ENABLE_SMALL_FIELD_MERGE", "true")).strip().lower() in {"0", "false", "no", "off"}:
+        return candidates, 0
+    if not candidates:
+        return candidates, 0
+
+    try:
+        max_small_width = int(os.getenv("SEGMENT_MERGE_SMALL_WIDTH", "2"))
+        max_merged_width = int(os.getenv("SEGMENT_MERGE_MAX_WIDTH", "8"))
+        min_cluster_fields = int(os.getenv("SEGMENT_MERGE_MIN_CLUSTER_FIELDS", "16"))
+        min_small_ratio = float(os.getenv("SEGMENT_MERGE_MIN_SMALL_RATIO", "0.25"))
+    except ValueError:
+        max_small_width = 2
+        max_merged_width = 8
+        min_cluster_fields = 16
+        min_small_ratio = 0.25
+
+    grouped: Dict[str, List[FieldBoundaryCandidate]] = {}
+    for item in candidates:
+        grouped.setdefault(item.message_cluster, []).append(item)
+
+    merged_count = 0
+    output: List[FieldBoundaryCandidate] = []
+    for cluster_id, items in grouped.items():
+        ordered = sorted(items, key=lambda item: (item.start, item.end))
+        small_count = sum(1 for item in ordered if item.end - item.start <= max_small_width)
+        small_ratio = small_count / max(1, len(ordered))
+        if len(ordered) < min_cluster_fields or small_ratio < min_small_ratio:
+            output.extend(ordered)
+            continue
+
+        idx = 0
+        while idx < len(ordered):
+            current = ordered[idx]
+            width = current.end - current.start
+            if width > max_small_width:
+                output.append(current)
+                idx += 1
+                continue
+
+            run = [current]
+            run_end = current.end
+            cursor = idx + 1
+            while cursor < len(ordered):
+                nxt = ordered[cursor]
+                next_width = nxt.end - nxt.start
+                if nxt.start != run_end or next_width > max_small_width:
+                    break
+                if nxt.end - run[0].start > max_merged_width:
+                    break
+                run.append(nxt)
+                run_end = nxt.end
+                cursor += 1
+
+            if len(run) >= 2:
+                avg_conf = sum(item.confidence for item in run) / len(run)
+                output.append(
+                    FieldBoundaryCandidate(
+                        message_cluster=cluster_id,
+                        start=run[0].start,
+                        end=run[-1].end,
+                        confidence=round(max(0.3, min(0.9, avg_conf * 0.98)), 3),
+                        source_tool=run[0].source_tool,
+                        reason=(
+                            f"小字段连续片段合并，count={len(run)}; "
+                            f"sources={','.join(sorted({item.source_tool for item in run}))}"
+                        ),
+                    )
+                )
+                merged_count += len(run) - 1
+                idx = cursor
+                continue
+
+            output.append(current)
+            idx += 1
+
+    return sorted(output, key=lambda item: (item.message_cluster, item.start, item.end)), merged_count
 
 
 def _normalize_candidate_clusters(
@@ -306,6 +581,40 @@ class SegmentationAgentStage:
         except ValueError:
             min_coverage_ratio = 0.55
 
+        text_candidates = _text_protocol_candidates(profile)
+        if text_candidates:
+            text_issue, text_reason = _segmentation_quality_issue(
+                text_candidates,
+                profile=profile,
+                min_fields_per_cluster=1,
+                max_fields_per_cluster=max_fields_per_cluster,
+                max_span_ratio=1.01,
+                max_single_byte_ratio=max_single_byte_ratio,
+                min_boundary_stability=0.0,
+                min_coverage_ratio=min_coverage_ratio,
+            )
+            runtime_info["text_segmenter_candidates"] = str(len(text_candidates))
+            runtime_info["text_segmenter_quality_reason"] = text_reason
+            if not text_issue:
+                candidates = _normalize_candidate_clusters(text_candidates, profile)
+                candidates, clipped_count = _clamp_candidates_to_cluster_lengths(candidates, profile)
+                candidates = _deduplicate(candidates)
+                candidates, merged_count = _merge_overfragmented_candidates(candidates, profile)
+                runtime_info["segmentation_attempted_tools"] = "text_segmenter"
+                runtime_info["text_segmenter_used"] = "true"
+                runtime_info["segment_boundary_clipped_count"] = str(clipped_count)
+                runtime_info["small_field_merge_count"] = str(merged_count)
+                payload = {
+                    "candidates": [item.model_dump(mode="json") for item in candidates],
+                    "tool_errors": tool_errors,
+                    "runtime_info": runtime_info,
+                }
+                output_path = Path(output_dir) / "segment_candidates.json"
+                write_json(output_path, payload)
+                logger.info("Segmentation completed -> %s", output_path)
+                return candidates
+            runtime_info["text_segmenter_used"] = "false"
+
         attempted: List[str] = []
         quality_triggered = False
         quality_reason = ""
@@ -407,7 +716,11 @@ class SegmentationAgentStage:
             tool_errors.append("分段 fallback 已触发：工具输出为空。")
 
         candidates = _normalize_candidate_clusters(candidates, profile)
+        candidates, clipped_count = _clamp_candidates_to_cluster_lengths(candidates, profile)
         candidates = _deduplicate(candidates)
+        candidates, merged_count = _merge_overfragmented_candidates(candidates, profile)
+        runtime_info["segment_boundary_clipped_count"] = str(clipped_count)
+        runtime_info["small_field_merge_count"] = str(merged_count)
         payload = {
             "candidates": [item.model_dump(mode="json") for item in candidates],
             "tool_errors": tool_errors,

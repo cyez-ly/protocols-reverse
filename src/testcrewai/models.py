@@ -111,6 +111,15 @@ class FieldSemanticCandidate(BaseModel):
     field_range: str
     semantic_type: Literal[
         "type",
+        "method",
+        "command",
+        "status_code",
+        "uri",
+        "version",
+        "header_name",
+        "header_value",
+        "parameter",
+        "body",
         "length",
         "timestamp",
         "id",

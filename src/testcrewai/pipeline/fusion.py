@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Set, Tuple
 
-from testcrewai.adapters.common import non_overlapping_ranges
+from testcrewai.adapters.common import non_overlapping_ranges, parse_range, range_to_str
 from testcrewai.models import (
     EvidenceItem,
     FieldBoundaryCandidate,
@@ -24,6 +24,8 @@ TOOL_RELIABILITY = {
     "fallback_segmenter": 0.55,
     "netplier_adapter": 0.78,
     "binaryinferno_adapter": 0.75,
+    "semantic_rules": 0.82,
+    "text_segmenter": 0.78,
     "fallback_semantic": 0.5,
 }
 
@@ -48,10 +50,101 @@ def _safe_int_env(name: str, default: int) -> int:
 
 def _cluster_length(cluster) -> int:
     if cluster.representative_lengths:
-        return max(1, int(cluster.representative_lengths[0]))
+        return max(1, max(int(length) for length in cluster.representative_lengths))
     if cluster.mean_length > 0:
         return max(1, int(round(cluster.mean_length)))
     return 1
+
+
+def _profile_cluster_lengths(profile: TrafficProfile) -> Dict[str, int]:
+    return {cluster.cluster_id: _cluster_length(cluster) for cluster in profile.message_clusters}
+
+
+def _sanitize_boundaries(
+    boundaries: List[FieldBoundaryCandidate],
+    cluster_lengths: Dict[str, int],
+) -> tuple[List[FieldBoundaryCandidate], List[str]]:
+    sanitized: List[FieldBoundaryCandidate] = []
+    notes: List[str] = []
+    clipped = 0
+    dropped = 0
+    for item in boundaries:
+        cluster_len = cluster_lengths.get(item.message_cluster)
+        if cluster_len is None:
+            sanitized.append(item)
+            continue
+        start = max(0, min(item.start, cluster_len))
+        end = max(start, min(item.end, cluster_len))
+        if end <= start:
+            dropped += 1
+            continue
+        if start != item.start or end != item.end:
+            clipped += 1
+            sanitized.append(
+                FieldBoundaryCandidate(
+                    message_cluster=item.message_cluster,
+                    start=start,
+                    end=end,
+                    confidence=round(max(0.25, item.confidence * 0.9), 3),
+                    source_tool=item.source_tool,
+                    reason=(
+                        f"{item.reason}; fusion_boundary_clipped_to={cluster_len} "
+                        f"from={item.start}:{item.end}"
+                    ),
+                )
+            )
+        else:
+            sanitized.append(item)
+
+    if clipped or dropped:
+        notes.append(f"字段边界合法性校验: clipped={clipped}, dropped={dropped}")
+    return sanitized, notes
+
+
+def _sanitize_semantics(
+    semantics: List[FieldSemanticCandidate],
+    cluster_lengths: Dict[str, int],
+) -> tuple[List[FieldSemanticCandidate], List[str]]:
+    sanitized: List[FieldSemanticCandidate] = []
+    notes: List[str] = []
+    clipped = 0
+    dropped = 0
+    for item in semantics:
+        cluster_len = cluster_lengths.get(item.message_cluster)
+        if cluster_len is None:
+            sanitized.append(item)
+            continue
+        try:
+            start, end = parse_range(item.field_range)
+        except Exception:
+            dropped += 1
+            continue
+        new_start = max(0, min(start, cluster_len))
+        new_end = max(new_start, min(end, cluster_len))
+        if new_end <= new_start:
+            dropped += 1
+            continue
+        if new_start != start or new_end != end:
+            clipped += 1
+            sanitized.append(
+                FieldSemanticCandidate(
+                    message_cluster=item.message_cluster,
+                    field_range=range_to_str(new_start, new_end),
+                    semantic_type=item.semantic_type,
+                    confidence=round(max(0.25, item.confidence * 0.9), 3),
+                    source_tool=item.source_tool,
+                    reason=(
+                        f"{item.reason}; fusion_semantic_clipped_to={cluster_len} "
+                        f"from={item.field_range}"
+                    ),
+                )
+            )
+        else:
+            sanitized.append(item)
+
+    if clipped or dropped:
+        notes.append(f"语义范围合法性校验: clipped={clipped}, dropped={dropped}")
+    return sanitized, notes
 
 
 def _reason_quality_factor(reason: str) -> float:
@@ -127,6 +220,9 @@ class FusionAgentStage:
         output_dir: str,
         logger,
     ) -> ProtocolSchema:
+        cluster_lengths = _profile_cluster_lengths(profile)
+        boundaries, boundary_validation_notes = _sanitize_boundaries(boundaries, cluster_lengths)
+        semantics, semantic_validation_notes = _sanitize_semantics(semantics, cluster_lengths)
         grouped_boundaries: Dict[str, Dict[Tuple[int, int], List[FieldBoundaryCandidate]]] = defaultdict(lambda: defaultdict(list))
         for boundary in boundaries:
             grouped_boundaries[boundary.message_cluster][(boundary.start, boundary.end)].append(boundary)
@@ -143,6 +239,8 @@ class FusionAgentStage:
 
         fields: List[ProtocolField] = []
         conflict_notes: List[str] = []
+        conflict_notes.extend(boundary_validation_notes)
+        conflict_notes.extend(semantic_validation_notes)
         unknown_penalty = _safe_float_env("FUSION_UNKNOWN_PENALTY", 0.85)
         unknown_penalty = max(0.0, min(1.0, unknown_penalty))
 

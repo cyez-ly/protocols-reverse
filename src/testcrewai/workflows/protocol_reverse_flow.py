@@ -561,6 +561,8 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
                 rationale=["使用默认兜底计划"],
             )
         self.state.execution_plan = self._refine_execution_plan_with_llm(profile, self.state.execution_plan)
+        if self.state.artifacts.execution_plan_path:
+            write_json(self.state.artifacts.execution_plan_path, self.state.execution_plan)
         self._collect_llm_note(
             "tool_selector_agent",
             f"Briefly justify this plan in Chinese: {self.state.execution_plan.model_dump_json()}",
@@ -654,6 +656,8 @@ class ProtocolReverseFlow(Flow[ProtocolReverseState]):
             self.state.errors.append(f"融合失败: {exc}")
             self.state.final_schema = ProtocolSchema(input_file=self.state.pcap_path)
         self.state.final_schema = self._apply_llm_fusion_arbitration(self.state.final_schema)
+        if self.state.artifacts.final_schema_path:
+            write_json(self.state.artifacts.final_schema_path, self.state.final_schema)
 
         self._collect_llm_note(
             "fusion_agent",
